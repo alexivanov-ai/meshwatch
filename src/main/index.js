@@ -2,7 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Tray, Menu, Notificati
 const path = require("path");
 const db = require("./db");
 const discovery = require("./discovery");
-const pihole = require("./pihole");
+const pi = require("./pi");
+const dns = require("./dns");
 const tplink = require("./tplink");
 const audit = require("./audit");
 const credentials = require("./credentials");
@@ -203,42 +204,48 @@ ipcMain.handle("audit:dismiss", (_e, { key }) => audit.dismiss(key));
 ipcMain.handle("audit:restore", (_e, { key }) => audit.restore(key));
 ipcMain.handle("subnet:get", () => discovery.detectSubnet());
 ipcMain.handle("credentials:available", () => credentials.available());
-ipcMain.handle("pihole:state", () => db.getPiHoleState());
-ipcMain.handle("pihole:prefs", (_e, prefs) => db.setPiHolePrefs(prefs || {}));
-ipcMain.handle("pihole:target", () => pihole.resolveTarget());
-ipcMain.handle("pihole:stats", () => pihole.stats());
-ipcMain.handle("pihole:leases", () => pihole.leases());
-ipcMain.handle("pihole:hasPassword", () => pihole.hasApiPassword());
-ipcMain.handle("pihole:setPassword", (_e, { password }) => pihole.setApiPassword(password));
-ipcMain.handle("pihole:pickKey", async () => {
+ipcMain.handle("pi:state", () => db.getPiState());
+ipcMain.handle("pi:prefs", (_e, prefs) => db.setPiPrefs(prefs || {}));
+ipcMain.handle("pi:target", () => pi.resolveTarget());
+ipcMain.handle("pi:backend", async () => {
+  await dns.detectBackend();
+  return dns.getBackendInfo();
+});
+ipcMain.handle("pi:stats", () => dns.stats());
+ipcMain.handle("pi:leases", () => dns.leases());
+ipcMain.handle("pi:hasPassword", () => dns.hasApiPassword());
+ipcMain.handle("pi:setPassword", (_e, { password }) => dns.setApiPassword(password));
+ipcMain.handle("pi:pickKey", async () => {
   const r = await dialog.showOpenDialog(win, {
-    title: "Pi-hole SSH private key",
+    title: "Pi SSH private key",
     properties: ["openFile"],
     filters: [{ name: "OpenSSH private key", extensions: ["", "pem", "key", "pub"] }]
   });
   if (r.canceled || !r.filePaths[0]) return { ok: false, cancelled: true };
-  db.setSetting("pihole_ssh_key", r.filePaths[0]);
+  db.setSetting("pi_ssh_key", r.filePaths[0]);
   return { ok: true, path: r.filePaths[0] };
 });
-ipcMain.handle("pihole:exec", async (_e, { command }) => {
-  if (pihole.isDisruptive(command)) {
+ipcMain.handle("pi:exec", async (_e, { command }) => {
+  if (pi.isDisruptive(command)) {
     const { response } = await dialog.showMessageBox(win, {
       type: "warning",
       buttons: ["Cancel", "Run it"],
       defaultId: 0,
       cancelId: 0,
-      title: "This interrupts DNS for the whole network",
+      title: "This may interrupt DNS or restart services on the network",
       message: command,
-      detail: "Name resolution will stop for roughly " + pihole.disruptionSeconds(command) + " seconds. Every device on the network is affected."
+      detail: pi.disruptionSeconds(command)
+        ? "Name resolution will stop for roughly " + pi.disruptionSeconds(command) + " seconds. Every device on the network is affected."
+        : "This can restart services on the Pi. If it upgrades the kernel or firmware, a manual reboot may be needed afterward."
     });
     if (response !== 1) return { cancelled: true, output: [] };
   }
-  return pihole.exec(command);
+  return pi.exec(command);
 });
-ipcMain.handle("pihole:block", async (_e, { mac, blocked }) => {
+ipcMain.handle("pi:block", async (_e, { mac, blocked }) => {
   const d = findByMac(mac);
   if (!d || !d.ip) return { ok: false, reason: "device has no address" };
-  const r = await pihole.blockClient(d.ip, { blocked: blocked !== false });
+  const r = await dns.blockClient(d.ip, { blocked: blocked !== false });
   if (r && r.ok) db.setBlocked(mac, blocked !== false);
   return r;
 });

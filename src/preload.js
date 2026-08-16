@@ -21,17 +21,18 @@ contextBridge.exposeInMainWorld("meshwatch", {
     set: (patch) => ipcRenderer.invoke("prefs:set", patch)
   },
 
-  pihole: {
-    stats: () => ipcRenderer.invoke("pihole:stats"),
-    leases: () => ipcRenderer.invoke("pihole:leases"),
-    exec: (command) => ipcRenderer.invoke("pihole:exec", { command }),
-    state: () => ipcRenderer.invoke("pihole:state"),
-    setPrefs: (prefs) => ipcRenderer.invoke("pihole:prefs", prefs),
-    target: () => ipcRenderer.invoke("pihole:target"),
-    hasPassword: () => ipcRenderer.invoke("pihole:hasPassword"),
-    setPassword: (password) => ipcRenderer.invoke("pihole:setPassword", { password }),
-    pickKey: () => ipcRenderer.invoke("pihole:pickKey"),
-    block: (mac, blocked) => ipcRenderer.invoke("pihole:block", { mac, blocked })
+  pi: {
+    stats: () => ipcRenderer.invoke("pi:stats"),
+    leases: () => ipcRenderer.invoke("pi:leases"),
+    exec: (command) => ipcRenderer.invoke("pi:exec", { command }),
+    state: () => ipcRenderer.invoke("pi:state"),
+    setPrefs: (prefs) => ipcRenderer.invoke("pi:prefs", prefs),
+    target: () => ipcRenderer.invoke("pi:target"),
+    backend: () => ipcRenderer.invoke("pi:backend"),
+    hasPassword: () => ipcRenderer.invoke("pi:hasPassword"),
+    setPassword: (password) => ipcRenderer.invoke("pi:setPassword", { password }),
+    pickKey: () => ipcRenderer.invoke("pi:pickKey"),
+    block: (mac, blocked) => ipcRenderer.invoke("pi:block", { mac, blocked })
   },
 
   tplink: {

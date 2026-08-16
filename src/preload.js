@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("meshwatch", {
   getAudit: () => ipcRenderer.invoke("audit:run"),
   dismissFinding: (key) => ipcRenderer.invoke("audit:dismiss", { key }),
   restoreFinding: (key) => ipcRenderer.invoke("audit:restore", { key }),
+  auditHistory: (limit) => ipcRenderer.invoke("audit:history", { limit }),
   getSubnet: () => ipcRenderer.invoke("subnet:get"),
   setNote: (mac, note) => ipcRenderer.invoke("devices:note", { mac, note }),
   renameDevice: (mac, name) => ipcRenderer.invoke("devices:rename", { mac, name }),

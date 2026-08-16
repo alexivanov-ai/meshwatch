@@ -210,6 +210,7 @@ ipcMain.handle("devices:watch", (_e, { mac, watched }) => {
 ipcMain.handle("audit:run", async () => audit.run(db.listDevices()));
 ipcMain.handle("audit:dismiss", (_e, { key }) => audit.dismiss(key));
 ipcMain.handle("audit:restore", (_e, { key }) => audit.restore(key));
+ipcMain.handle("audit:history", (_e, { limit } = {}) => db.auditHistory(limit));
 ipcMain.handle("subnet:get", () => discovery.detectSubnet());
 ipcMain.handle("credentials:available", () => credentials.available());
 ipcMain.handle("pi:state", () => db.getPiState());

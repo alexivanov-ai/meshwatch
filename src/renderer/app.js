@@ -779,6 +779,7 @@ async function runAudit() {
     state.audit = await window.meshwatch.getAudit();
     state.auditFilter = "all";
     renderAudit();
+    renderAuditTrend();
     setStatus("Audit complete — score " + state.audit.score);
     toast("Audit score " + state.audit.score);
   } catch (e) {
@@ -1005,6 +1006,17 @@ function sparklineSvg(points) {
   const w = 140, h = 24, step = w / Math.max(1, points.length - 1);
   const path = points.map((p, i) => (i === 0 ? "M" : "L") + (i * step).toFixed(1) + "," + (h - p.onlineRatio * h).toFixed(1)).join(" ");
   return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '"><path d="' + path + '" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+}
+
+// Posture-score trend line in the Security view. sparklineSvg() reads each
+// point's `onlineRatio` (0..1), so a score out of 100 is mapped down to that
+// range — a raw `score` property would render a blank line.
+async function renderAuditTrend() {
+  const el = $("#audit-trend");
+  if (!el) return;
+  const history = await window.meshwatch.auditHistory(30);
+  const points = (history || []).map((h) => ({ onlineRatio: h.score / 100 }));
+  el.innerHTML = points.length > 1 ? "Score trend " + sparklineSvg(points) : "";
 }
 
 async function renderUptimeSparkline(d) {

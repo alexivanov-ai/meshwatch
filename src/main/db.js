@@ -62,6 +62,12 @@ function init() {
     "  mac TEXT, port INTEGER, name TEXT, category TEXT, title TEXT," +
     "  updated_at INTEGER," +
     "  PRIMARY KEY (mac, port)" +
+    ");" +
+    // One row per audit run, so the Security view can show a posture-score
+    // trend line instead of just the latest number.
+    "CREATE TABLE IF NOT EXISTS audit_runs (" +
+    "  id INTEGER PRIMARY KEY AUTOINCREMENT," +
+    "  ts INTEGER, score INTEGER, counts_json TEXT" +
     ");"
   );
 
@@ -496,6 +502,21 @@ function getServices(mac) {
   return db.prepare("SELECT port, name, category, title FROM pi_services WHERE mac = ? ORDER BY port").all(mac);
 }
 
+// --- audit_runs ---------------------------------------------------------
+// One row per Security audit run, so the UI can show a posture-score trend
+// line rather than only the latest score.
+
+function recordAuditRun(score, counts) {
+  db.prepare("INSERT INTO audit_runs (ts, score, counts_json) VALUES (?, ?, ?)")
+    .run(Date.now(), score, JSON.stringify(counts));
+}
+
+function auditHistory(limit = 30) {
+  return db.prepare("SELECT ts, score, counts_json FROM audit_runs ORDER BY ts DESC LIMIT ?").all(limit)
+    .reverse()
+    .map((r) => ({ ts: r.ts, score: r.score, counts: safeJson(r.counts_json, {}) }));
+}
+
 module.exports = {
   init, recordScan, listDevices, deviceUptimeHistory, setNote, setNameOverride, setFirmwareManual,
   setOpenPorts, setWatched, setBlocked, setQueryCount, setClients, updateDeviceFields,
@@ -505,5 +526,6 @@ module.exports = {
   looksLikePi, notePiDiscovery, getPiState, setPiPrefs,
   listDismissedFindingKeys, dismissFinding, restoreFinding,
   saveServices, getServices,
+  recordAuditRun, auditHistory,
   handle: () => db
 };

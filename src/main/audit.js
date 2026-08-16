@@ -258,7 +258,9 @@ async function run(devices, opts) {
     db.setSetting("last_port_scan", String(Date.now()));
   }
   const extras = await gatherExtras(list);
-  return packageResult(collect(list, extras));
+  const result = packageResult(collect(list, extras));
+  db.recordAuditRun(result.score, result.counts);
+  return result;
 }
 
 function dismiss(key) {

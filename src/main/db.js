@@ -174,6 +174,29 @@ function recordScan(devices) {
   return devices.length;
 }
 
+// Per-day online ratio for the last N days, from the sightings table. Each
+// day's ratio is that day's sighting count relative to the busiest day in
+// the window (not a fraction of scans actually run), so a device seen every
+// scan reads as a flat high line and a day with no sightings reads as 0.
+function deviceUptimeHistory(mac, days = 14) {
+  const since = Date.now() - days * 86400000;
+  const rows = db.prepare(
+    "SELECT seen_at FROM sightings WHERE mac = ? AND seen_at >= ? ORDER BY seen_at"
+  ).all(mac, since);
+  const byDay = new Map();
+  for (const r of rows) {
+    const day = new Date(r.seen_at).toISOString().slice(0, 10);
+    byDay.set(day, (byDay.get(day) || 0) + 1);
+  }
+  const maxPerDay = Math.max(1, ...Array.from(byDay.values()));
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    out.push({ day: d, onlineRatio: byDay.has(d) ? Math.min(1, byDay.get(d) / maxPerDay) : 0 });
+  }
+  return out;
+}
+
 function listDevices() {
   const devices = db.prepare("SELECT * FROM devices ORDER BY last_seen DESC").all();
   const lastMethod = db.prepare("SELECT method FROM sightings WHERE mac = ? ORDER BY seen_at DESC LIMIT 1");
@@ -469,7 +492,7 @@ function getServices(mac) {
 }
 
 module.exports = {
-  init, recordScan, listDevices, setNote, setNameOverride, setFirmwareManual,
+  init, recordScan, listDevices, deviceUptimeHistory, setNote, setNameOverride, setFirmwareManual,
   setOpenPorts, setWatched, setBlocked, setQueryCount, setClients, updateDeviceFields,
   getPrefs, setPrefs, DEFAULT_PREFS,
   saveCredential, listCredentialMeta, getCredential, removeCredential,

@@ -997,6 +997,24 @@ function updateScanChrome() {
   $("#scan-bar-fill").style.width = Math.min(100, state.scanProgress) + "%";
 }
 
+// Inline SVG line sparkline, no charting library. `points` is an array of
+// {onlineRatio: 0..1} objects (or objects with any 0..1-valued property
+// accessed the same way) — reused as-is by later audit-score and latency
+// trend features, so keep this signature stable.
+function sparklineSvg(points) {
+  const w = 140, h = 24, step = w / Math.max(1, points.length - 1);
+  const path = points.map((p, i) => (i === 0 ? "M" : "L") + (i * step).toFixed(1) + "," + (h - p.onlineRatio * h).toFixed(1)).join(" ");
+  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '"><path d="' + path + '" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+}
+
+async function renderUptimeSparkline(d) {
+  const history = await window.meshwatch.uptimeHistory(d.mac, 14);
+  const holder = document.createElement("div");
+  holder.className = "detail-section";
+  holder.innerHTML = "Online history (14d) " + sparklineSvg(history);
+  $("#detail-body").appendChild(holder);
+}
+
 async function openDetail(d) {
   state.selectedMac = d.mac;
   renderInventory();
@@ -1211,6 +1229,8 @@ async function openDetail(d) {
       actions.appendChild(b);
     }
   }
+
+  renderUptimeSparkline(d);
 }
 
 function closeDetail() {

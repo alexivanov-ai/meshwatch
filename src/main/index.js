@@ -193,6 +193,7 @@ const findByMac = (mac) => db.listDevices().find((d) => d.mac === mac) || null;
 
 ipcMain.handle("scan:run", () => runScan("manual"));
 ipcMain.handle("devices:list", () => db.listDevices());
+ipcMain.handle("device:uptimeHistory", (_e, { mac, days }) => db.deviceUptimeHistory(mac, days));
 ipcMain.handle("devices:topology", () => discovery.topology(db.listDevices()));
 ipcMain.handle("devices:drift", () => discovery.detectDrift(db.listDevices()));
 ipcMain.handle("devices:note", (_e, { mac, note }) => db.setNote(mac, note));

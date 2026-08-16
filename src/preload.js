@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("meshwatch", {
   renameDevice: (mac, name) => ipcRenderer.invoke("devices:rename", { mac, name }),
   setFirmwareManual: (mac, version) => ipcRenderer.invoke("devices:firmwareManual", { mac, version }),
   watchDevice: (mac, watched) => ipcRenderer.invoke("devices:watch", { mac, watched }),
+  uptimeHistory: (mac, days) => ipcRenderer.invoke("device:uptimeHistory", { mac, days }),
 
   prefs: {
     get: () => ipcRenderer.invoke("prefs:get"),

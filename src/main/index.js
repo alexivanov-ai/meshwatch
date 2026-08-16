@@ -248,6 +248,7 @@ ipcMain.handle("pi:apt:check", () => pi.aptCheckUpdates());
 ipcMain.handle("pi:apt:upgrade", async () => confirmedExec(pi.aptUpgradeCommand()));
 ipcMain.handle("pi:apt:apps", () => pi.installedApps());
 ipcMain.handle("pi:rebootRequired", () => pi.rebootRequired());
+ipcMain.handle("pi:hostStats", () => pi.hostStats());
 ipcMain.handle("pi:block", async (_e, { mac, blocked }) => {
   const d = findByMac(mac);
   if (!d || !d.ip) return { ok: false, reason: "device has no address" };

@@ -36,7 +36,8 @@ contextBridge.exposeInMainWorld("meshwatch", {
     aptCheck: () => ipcRenderer.invoke("pi:apt:check"),
     aptUpgrade: () => ipcRenderer.invoke("pi:apt:upgrade"),
     installedApps: () => ipcRenderer.invoke("pi:apt:apps"),
-    rebootRequired: () => ipcRenderer.invoke("pi:rebootRequired")
+    rebootRequired: () => ipcRenderer.invoke("pi:rebootRequired"),
+    hostStats: () => ipcRenderer.invoke("pi:hostStats")
   },
 
   tplink: {

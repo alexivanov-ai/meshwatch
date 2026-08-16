@@ -62,6 +62,24 @@ async function rebootRequired() {
   return (r.output || []).some((line) => line.trim() === "yes");
 }
 
+async function hostStats() {
+  const [uptimeR, diskR, cpuR] = await Promise.all([
+    exec("uptime -p"),
+    exec("df -h / | tail -1"),
+    exec("nproc && cat /proc/loadavg")
+  ]);
+  const disk = (diskR.output && diskR.output[0] || "").trim().split(/\s+/);
+  const cpuLines = cpuR.output || [];
+  return {
+    uptime: (uptimeR.output && uptimeR.output[0] || "").replace(/^up\s+/, "") || null,
+    diskUsedPercent: disk[4] ? Number(disk[4].replace("%", "")) : null,
+    diskUsed: disk[2] || null,
+    diskTotal: disk[1] || null,
+    cpuCores: cpuLines[0] ? Number(cpuLines[0]) : null,
+    loadAvg: cpuLines[1] ? cpuLines[1].split(" ").slice(0, 3).join(" ") : null
+  };
+}
+
 function resolveTarget() {
   const state = db.getPiState();
   return {
@@ -147,7 +165,7 @@ function exec(command) {
 
 module.exports = {
   resolveTarget, sshConnectOptions, exec, isDisruptive, disruptionSeconds,
-  aptCheckUpdates, aptUpgradeCommand, installedApps, rebootRequired,
+  aptCheckUpdates, aptUpgradeCommand, installedApps, rebootRequired, hostStats,
   get HOST() { return resolveTarget().host; },
   get SSH_PORT() { return resolveTarget().port; }
 };

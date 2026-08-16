@@ -24,7 +24,7 @@ function disruptionSeconds(command) {
   return hit ? hit.seconds : 0;
 }
 
-const APT_SKIP_RE = /(-dev$|^lib|firmware|^linux-|raspberrypi-kernel|-dbg$|-dbgsym$)/;
+const APT_SKIP_RE = /(-dev$|^lib|^firmware|-firmware$|^linux-|raspberrypi-kernel|-dbg$|-dbgsym$)/;
 
 async function aptCheckUpdates() {
   const update = await exec("sudo apt-get update -qq");
@@ -58,7 +58,8 @@ async function installedApps() {
 
 async function rebootRequired() {
   const r = await exec("test -f /var/run/reboot-required && echo yes || echo no");
-  return (r.output || []).join("").indexOf("yes") !== -1;
+  if (r.code !== 0) return false;
+  return (r.output || []).some((line) => line.trim() === "yes");
 }
 
 function resolveTarget() {

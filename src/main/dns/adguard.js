@@ -153,15 +153,16 @@ async function blockClient(ip, { blocked } = { blocked: true }) {
     return { ok: false, reason: "AdGuard Home internet blocking needs a live API session. Add the admin password in Preferences." };
   }
   const listR = await authedGet(host, "/control/access/list");
-  const cur = (listR && listR.json) || { allowed_clients: [], disallowed_clients: [], blocked_hosts: [] };
+  if (!listR || !listR.json) return { ok: false, reason: "Could not read AdGuard's access list — nothing was changed." };
+  const cur = listR.json;
   const disallowed = new Set(cur.disallowed_clients || []);
   if (blocked) disallowed.add(ip); else disallowed.delete(ip);
-  await authedPost(host, "/control/access/set", {
+  const setR = await authedPost(host, "/control/access/set", {
     allowed_clients: cur.allowed_clients || [],
     disallowed_clients: Array.from(disallowed),
     blocked_hosts: cur.blocked_hosts || []
   });
-  return { ok: true, blocked, via: "adguard-access-list" };
+  return { ok: !!(setR && setR.status < 400), blocked, via: "adguard-access-list" };
 }
 
 module.exports = { stats, leases, blockClient, setApiPassword, hasApiPassword };

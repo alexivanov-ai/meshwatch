@@ -11,7 +11,9 @@ const adguard = require("./adguard");
 async function probeAdguard(host) {
   try {
     const r = await lan.request({ url: "http://" + host + "/control/status", timeoutMs: 3000 });
-    return r && (r.status === 200 || r.status === 403); // 403 = needs auth, but it's AdGuard
+    if (!r) return false;
+    if (r.status === 401 || r.status === 403) return true; // needs auth, but it's AdGuard
+    return r.status === 200 && r.json && Array.isArray(r.json.dns_addresses);
   } catch (e) { return false; }
 }
 

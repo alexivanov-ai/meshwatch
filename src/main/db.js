@@ -54,6 +54,14 @@ function init() {
     "CREATE TABLE IF NOT EXISTS finding_dismissals (" +
     "  key TEXT PRIMARY KEY," +
     "  dismissed_at INTEGER" +
+    ");" +
+    // Cache of self-hosted services auto-detected on the Pi (open port +
+    // title probe + small catalog match, see pi-services.js). Per-MAC so a
+    // re-detected Pi's stale ports don't linger.
+    "CREATE TABLE IF NOT EXISTS pi_services (" +
+    "  mac TEXT, port INTEGER, name TEXT, category TEXT, title TEXT," +
+    "  updated_at INTEGER," +
+    "  PRIMARY KEY (mac, port)" +
     ");"
   );
 
@@ -438,6 +446,28 @@ function restoreFinding(key) {
   return { ok: true };
 }
 
+// --- pi_services --------------------------------------------------------
+// Cache of auto-detected self-hosted services on the Pi. Full replace per
+// mac each time discoverServices() runs, so stale ports don't linger.
+
+function saveServices(mac, services) {
+  const now = Date.now();
+  const del = db.prepare("DELETE FROM pi_services WHERE mac = ?");
+  const ins = db.prepare(
+    "INSERT INTO pi_services (mac, port, name, category, title, updated_at) VALUES (?,?,?,?,?,?)"
+  );
+  const tx = db.transaction((list) => {
+    del.run(mac);
+    for (const s of list) ins.run(mac, s.port, s.name, s.category, s.title, now);
+  });
+  tx(services);
+  return { ok: true };
+}
+
+function getServices(mac) {
+  return db.prepare("SELECT port, name, category, title FROM pi_services WHERE mac = ? ORDER BY port").all(mac);
+}
+
 module.exports = {
   init, recordScan, listDevices, setNote, setNameOverride, setFirmwareManual,
   setOpenPorts, setWatched, setBlocked, setQueryCount, setClients, updateDeviceFields,
@@ -446,5 +476,6 @@ module.exports = {
   getSetting, setSetting, getSettings,
   looksLikePi, notePiDiscovery, getPiState, setPiPrefs,
   listDismissedFindingKeys, dismissFinding, restoreFinding,
+  saveServices, getServices,
   handle: () => db
 };

@@ -235,6 +235,7 @@ function childCount(mac) {
 }
 
 function go(view) {
+  if (state.view === "pi" && view !== "pi") stopTerminal();
   state.view = view;
   $$(".nav").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
   $$(".view").forEach((v) => v.classList.toggle("on", v.id === "view-" + view));
@@ -856,9 +857,68 @@ async function loadPi() {
     appsEl.innerHTML = hasApps
       ? apps.apps.map((a) => '<div class="node-row"><span>' + escapeHtml(a.name) + "</span></div>").join("")
       : escapeHtml(apps.ok ? "No manually-installed apps found." : (apps.reason || "Could not read installed apps."));
+
+    loadPiTerminalTarget();
   } catch (e) {
     $("#pi-stats").innerHTML = '<div class="empty">' + escapeHtml(e.message) + "</div>";
   }
+}
+
+let term = null;
+let fitAddon = null;
+let termSessionId = null;
+
+function startTerminal() {
+  if (term) return;
+  term = new window.Terminal({ convertEol: true, cursorBlink: true, fontSize: 13 });
+  fitAddon = new window.FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open($("#pi-term"));
+  fitAddon.fit();
+
+  window.meshwatch.terminal.onStarted(({ sessionId }) => { termSessionId = sessionId; });
+  window.meshwatch.terminal.onData(({ sessionId, chunk }) => { if (sessionId === termSessionId) term.write(chunk); });
+  window.meshwatch.terminal.onClosed(({ sessionId, error }) => {
+    if (sessionId !== termSessionId) return;
+    term.write("\r\n[connection closed" + (error ? ": " + error : "") + "]\r\n");
+    termSessionId = null;
+  });
+  term.onData((data) => { if (termSessionId) window.meshwatch.terminal.input(termSessionId, data); });
+  term.onResize(({ rows, cols }) => { if (termSessionId) window.meshwatch.terminal.resize(termSessionId, rows, cols); });
+
+  window.meshwatch.terminal.start(term.rows, term.cols);
+  window.addEventListener("resize", () => fitAddon && fitAddon.fit());
+}
+
+function stopTerminal() {
+  if (termSessionId) window.meshwatch.terminal.stop(termSessionId);
+  termSessionId = null;
+}
+
+function loadPiTerminalTarget() {
+  // Called from loadPi() each time the Pi tab is opened.
+  if (!term) { startTerminal(); return; }
+  // The xterm.js UI instance survives tab switches (so we never spawn a
+  // second visible terminal), but go() stops the backend SSH session when
+  // navigating away. If there's no live session, start a fresh one in the
+  // same terminal instance rather than leaving a dead prompt on return —
+  // the onStarted/onData/onClosed listeners are already wired from the
+  // first startTerminal() call and just pick up the new session id.
+  if (!termSessionId) {
+    term.reset();
+    window.meshwatch.terminal.start(term.rows, term.cols);
+  }
+}
+
+const piServicesToggle = $("#pi-services-toggle");
+if (piServicesToggle) {
+  piServicesToggle.addEventListener("click", () => {
+    const body = $("#pi-services-body");
+    const collapsed = body.hidden;
+    body.hidden = !collapsed;
+    piServicesToggle.textContent = collapsed ? "Collapse" : "Expand";
+    piServicesToggle.setAttribute("aria-expanded", String(collapsed));
+  });
 }
 
 $("#pi-apt-check").addEventListener("click", async () => {

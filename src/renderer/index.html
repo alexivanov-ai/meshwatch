@@ -5,6 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <title>Meshwatch</title>
+<link rel="stylesheet" href="vendor/xterm.css">
 <link rel="stylesheet" href="styles.css">
 <script>
   // Apply theme before first paint to avoid a light→dark flash.
@@ -143,10 +144,20 @@
           <div id="pi-leases" class="empty">Leases appear here once a backend is connected.</div>
         </div>
 
+        <div class="panel" id="pi-terminal-panel">
+          <h2 class="subhead">Terminal</h2>
+          <div id="pi-term"></div>
+        </div>
+
         <div class="panel" id="pi-services-panel">
-          <h2 class="subhead">Detected services</h2>
-          <div id="pi-services" class="empty">Save SSH credentials for the Pi to detect running services.</div>
-          <button type="button" class="secondary" id="pi-rescan-services">Rescan services</button>
+          <div class="panel-head">
+            <h2 class="subhead" style="margin:0">Detected services</h2>
+            <button type="button" class="ghost" id="pi-services-toggle" aria-expanded="true" aria-controls="pi-services-body">Collapse</button>
+          </div>
+          <div id="pi-services-body">
+            <div id="pi-services" class="empty">Save SSH credentials for the Pi to detect running services.</div>
+            <button type="button" class="secondary" id="pi-rescan-services">Rescan services</button>
+          </div>
         </div>
 
         <div class="panel" id="pi-system-panel">
@@ -160,11 +171,6 @@
           <div id="pi-apt-result" class="empty"></div>
           <h2 class="subhead">Installed apps</h2>
           <div id="pi-apps" class="empty"></div>
-        </div>
-
-        <div class="panel" id="pi-terminal-panel">
-          <h2 class="subhead">Terminal</h2>
-          <div id="pi-term"></div>
         </div>
 
         <div class="panel">
@@ -399,6 +405,8 @@
     <div id="browser-frame" class="browser-frame"></div>
   </div>
 
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

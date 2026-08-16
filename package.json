@@ -32,6 +32,10 @@
   "build": {
     "appId": "com.homemonitoring.meshwatch",
     "productName": "Meshwatch",
+    "npmRebuild": false,
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "files": [
       "src/**/*",
       "config/**/*",

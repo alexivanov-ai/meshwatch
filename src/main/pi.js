@@ -173,33 +173,42 @@ function termStart(sessionId, { rows, cols }, onData, onClose) {
   if (!opts.privateKey && !opts.password) { onClose("SSH is not connected yet — set a key or saved password in Preferences"); return; }
 
   const conn = new Client();
+  termSessions.set(sessionId, { conn, stream: null }); // registered before connecting, so termStop can always find and tear it down
+
   conn.on("ready", () => {
     conn.shell({ term: "xterm-256color", rows: rows || 24, cols: cols || 80 }, (err, stream) => {
-      if (err) { onClose(String(err.message || err)); return; }
-      termSessions.set(sessionId, { conn, stream });
+      if (err) { termSessions.delete(sessionId); onClose(String(err.message || err)); return; }
+      const session = termSessions.get(sessionId);
+      if (!session) { try { stream.close(); } catch (e) { /* ignore */ } return; } // termStop already ran while connecting
+      session.stream = stream;
       stream.on("data", (d) => onData(d.toString("utf8")));
       stream.stderr.on("data", (d) => onData(d.toString("utf8")));
       stream.on("close", () => { termSessions.delete(sessionId); onClose(null); });
     });
   });
   conn.on("error", (e) => { onClose(String(e.message || e)); });
-  conn.connect(opts);
+  try {
+    conn.connect(opts);
+  } catch (e) {
+    termSessions.delete(sessionId);
+    onClose(String(e.message || e));
+  }
 }
 
 function termInput(sessionId, data) {
   const s = termSessions.get(sessionId);
-  if (s) s.stream.write(data);
+  if (s && s.stream) s.stream.write(data);
 }
 
 function termResize(sessionId, rows, cols) {
   const s = termSessions.get(sessionId);
-  if (s) s.stream.setWindow(rows, cols, 0, 0);
+  if (s && s.stream) s.stream.setWindow(rows, cols, 0, 0);
 }
 
 function termStop(sessionId) {
   const s = termSessions.get(sessionId);
   if (!s) return;
-  try { s.stream.close(); } catch (e) { /* ignore */ }
+  if (s.stream) { try { s.stream.close(); } catch (e) { /* ignore */ } }
   try { s.conn.end(); } catch (e) { /* ignore */ }
   termSessions.delete(sessionId);
 }

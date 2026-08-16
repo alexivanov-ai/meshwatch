@@ -76,7 +76,10 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Build Windows installer
-        run: npm run build:win -- --config.buildVersion=${{ steps.version.outputs.build_version }}
+        # electron-builder detects CI and defaults to trying its own GitHub
+        # publish step, which needs GH_TOKEN we don't set - we publish
+        # ourselves via softprops/action-gh-release below instead.
+        run: npm run build:win -- --config.buildVersion=${{ steps.version.outputs.build_version }} --publish never
 
       - name: Find installer
         id: artifact

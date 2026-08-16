@@ -1,7 +1,7 @@
-// src/main/dns/pihole.js — Pi-hole REST (v5 token or v6 SID) adapter.
-// Selected by dns/index.js when the DNS-backend detector matches Pi-hole.
-// Moved from src/main/pihole.js — the DNS-specific parts only; SSH exec,
-// target resolution and disruptive-command gating now live in ../pi.js.
+// src/main/dns/ftl.js — REST adapter (v5 token or v6 SID) for the FTL-based
+// DNS/DHCP service some users run on their Pi. Selected by dns/index.js
+// when the backend detector matches it. SSH exec, target resolution and
+// disruptive-command gating live in ../pi.js, not here.
 const pi = require("../pi");
 const credentials = require("../credentials");
 const lan = require("../lanhttp");
@@ -300,13 +300,13 @@ async function blockClient(ip, { blocked } = { blocked: true }) {
     } else {
       await v6send("/api/clients", "POST", { client: ip, comment: "Meshwatch blocked", groups: [group.id] });
     }
-    return { ok: true, blocked: true, via: "pihole-group" };
+    return { ok: true, blocked: true, via: "ftl-group" };
   }
   if (existing) {
     const groups = (existing.groups || []).filter((id) => id !== group.id);
     await v6send("/api/clients/" + encodeURIComponent(existing.client || ip), "PUT", { groups });
   }
-  return { ok: true, blocked: false, via: "pihole-group" };
+  return { ok: true, blocked: false, via: "ftl-group" };
 }
 
 module.exports = { stats, leases, blockClient, setApiPassword, hasApiPassword };

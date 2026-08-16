@@ -5,7 +5,7 @@
 const db = require("../db");
 const pi = require("../pi");
 const lan = require("../lanhttp");
-const pihole = require("./pihole");
+const ftl = require("./ftl");
 const adguard = require("./adguard");
 
 async function probeAdguard(host) {
@@ -17,7 +17,7 @@ async function probeAdguard(host) {
   } catch (e) { return false; }
 }
 
-async function probePihole(host) {
+async function probeFtl(host) {
   try {
     const r = await lan.request({ url: "http://" + host + "/admin/api.php?status", timeoutMs: 3000 });
     return !!(r && r.json);
@@ -27,8 +27,8 @@ async function probePihole(host) {
 async function detectBackend() {
   const t = pi.resolveTarget();
   if (!t.host) return "unknown";
-  const [isAdguard, isPihole] = await Promise.all([probeAdguard(t.host), probePihole(t.host)]);
-  const backend = isAdguard ? "adguard" : (isPihole ? "pihole" : "unknown");
+  const [isAdguard, isFtl] = await Promise.all([probeAdguard(t.host), probeFtl(t.host)]);
+  const backend = isAdguard ? "adguard" : (isFtl ? "ftl" : "unknown");
   db.setSetting("pi_dns_backend", backend);
   return backend;
 }
@@ -39,7 +39,7 @@ function cachedBackend() {
 
 function adapterFor(backend) {
   if (backend === "adguard") return adguard;
-  if (backend === "pihole") return pihole;
+  if (backend === "ftl") return ftl;
   return null;
 }
 
@@ -68,12 +68,12 @@ async function blockClient(ip, opts) {
 }
 
 function setApiPassword(password) {
-  const a = adapterFor(cachedBackend()) || pihole; // no backend detected yet: still let the user save a password
+  const a = adapterFor(cachedBackend()) || ftl; // no backend detected yet: still let the user save a password
   return a.setApiPassword(password);
 }
 
 function hasApiPassword() {
-  const a = adapterFor(cachedBackend()) || pihole;
+  const a = adapterFor(cachedBackend()) || ftl;
   return a.hasApiPassword();
 }
 

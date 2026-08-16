@@ -53,9 +53,15 @@ function notify(title, body) {
   } catch (e) { /* ignore */ }
 }
 
+function trayIconPath() {
+  const variant = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  return path.join(__dirname, "..", "..", "build", "tray", "tray-" + variant + "-2x.png");
+}
+
 function createTray() {
   if (tray) return;
-  let image = nativeImage.createFromPath(iconPath());
+  let image = nativeImage.createFromPath(trayIconPath());
+  if (image.isEmpty()) image = nativeImage.createFromPath(iconPath());
   if (image.isEmpty()) image = nativeImage.createEmpty();
   tray = new Tray(image.resize({ width: 16, height: 16 }));
   tray.setToolTip("Meshwatch");
@@ -66,6 +72,9 @@ function createTray() {
     { label: "Quit", click: () => { app.quit(); } }
   ]));
   tray.on("click", () => showWindow());
+  nativeTheme.on("updated", () => {
+    if (tray) tray.setImage(nativeImage.createFromPath(trayIconPath()).resize({ width: 16, height: 16 }));
+  });
 }
 
 function createWindow() {

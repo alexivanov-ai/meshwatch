@@ -1,0 +1,109 @@
+{
+  "subnet": "192.168.1.0/24",
+  "known": [
+    {
+      "name": "Raspberry Pi 5",
+      "vendor": "Raspberry Pi Ltd",
+      "model": "Pi 5",
+      "role": "dns-dhcp",
+      "control": "ssh",
+      "ssh": {
+        "port": 2222,
+        "user": "admin"
+      },
+      "confirmed": {
+        "ip": "192.168.1.63",
+        "source": "user-confirmed 2026-08-16"
+      }
+    },
+    {
+      "name": "Archer BE220",
+      "vendor": "TP-Link",
+      "model": "Archer BE220",
+      "role": "gateway",
+      "control": "tplink"
+    },
+    {
+      "name": "8-port switch",
+      "vendor": "Unbranded",
+      "model": "unknown",
+      "role": "switch",
+      "control": "none",
+      "note": "Unmanaged - has no IP and will never be discovered directly. Inferred only from topology."
+    },
+    {
+      "name": "Archer AX20",
+      "vendor": "TP-Link",
+      "model": "Archer AX20",
+      "role": "access-point",
+      "control": "tplink"
+    },
+    {
+      "name": "RE450 extender",
+      "vendor": "TP-Link",
+      "model": "RE450",
+      "role": "extender",
+      "control": "tplink"
+    },
+    {
+      "name": "TL-WA1201",
+      "vendor": "TP-Link",
+      "model": "TL-WA1201",
+      "role": "extender",
+      "control": "tplink"
+    },
+    {
+      "name": "TL-WDR4300",
+      "vendor": "TP-Link",
+      "model": "TL-WDR4300",
+      "role": "legacy-router",
+      "control": "readonly",
+      "endOfSupport": "2016"
+    },
+    {
+      "name": "Broadcom AP",
+      "vendor": "Broadcom",
+      "model": "unknown",
+      "role": "access-point",
+      "control": "none"
+    }
+  ],
+  "riskyPorts": [
+    {
+      "port": 23,
+      "proto": "tcp",
+      "label": "telnet",
+      "severity": "critical"
+    },
+    {
+      "port": 9100,
+      "proto": "tcp",
+      "label": "raw print (JetDirect)",
+      "severity": "medium"
+    },
+    {
+      "port": 8888,
+      "proto": "tcp",
+      "label": "unauthenticated local API",
+      "severity": "high"
+    },
+    {
+      "port": 7000,
+      "proto": "udp",
+      "label": "GREE local API, unauthenticated",
+      "severity": "critical"
+    },
+    {
+      "port": 1900,
+      "proto": "udp",
+      "label": "UPnP/SSDP",
+      "severity": "low"
+    },
+    {
+      "port": 80,
+      "proto": "tcp",
+      "label": "admin over plain HTTP",
+      "severity": "medium"
+    }
+  ]
+}

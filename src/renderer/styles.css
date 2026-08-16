@@ -1,0 +1,119 @@
+/* Phase 0 styling only. Phase 5 replaces this with the prototype design. */
+:root {
+  --bg: #f3f2f2;
+  --ink: #201e1d;
+  --accent: #ec3013;
+  --line: rgba(32, 30, 29, 0.4);
+  --rule: #d7d3d3;
+  --surface: #f8f4f4;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 "Archivo", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ink);
+  color: var(--bg);
+  padding: 0 12px;
+  height: 38px;
+  flex: none;
+}
+header .mark { width: 14px; height: 14px; background: var(--accent); }
+header strong { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+header .sub { font-size: 11px; opacity: 0.5; }
+
+main { flex: 1; display: flex; min-height: 0; }
+
+nav {
+  width: 240px;
+  flex: none;
+  border-right: 2px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+nav .spacer { flex: 1; }
+
+.nav {
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  font: 600 13px/1.2 inherit;
+  text-align: left;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.nav:hover { background: #eae7e7; }
+.nav.on { border-left-color: var(--accent); background: #eae7e7; font-weight: 800; }
+
+.primary {
+  margin: 14px 16px;
+  border: 0;
+  background: var(--accent);
+  color: var(--bg);
+  font: 800 14px/1.2 inherit;
+  text-align: left;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.primary:hover { background: #dd2b0f; }
+.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#stage { flex: 1; min-width: 0; overflow-y: auto; padding: 24px 28px; }
+
+.note { font-size: 13px; max-width: 60em; opacity: 0.75; }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; }
+
+#log {
+  background: var(--ink);
+  color: #d7d3d3;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 12px 14px;
+  height: 160px;
+  overflow-y: auto;
+  margin: 18px 0;
+  border: 2px solid var(--line);
+}
+#log:empty { display: none; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--line);
+}
+td { padding: 9px 10px; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
+tr:hover td { background: #eae7e7; }
+
+footer {
+  flex: none;
+  height: 30px;
+  border-top: 2px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 11px;
+  opacity: 0.7;
+}

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Meshwatch</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <span class="mark"></span>
+    <strong>Meshwatch</strong>
+    <span class="sub">192.168.1.0/24 &middot; gateway Archer BE220 &middot; DNS + DHCP on Pi-hole</span>
+  </header>
+
+  <main>
+    <nav>
+      <button class="nav on" data-view="inventory">Inventory</button>
+      <button class="nav" data-view="topology">Topology</button>
+      <button class="nav" data-view="audit">Security audit</button>
+      <button class="nav" data-view="pihole">Pi-hole</button>
+      <div class="spacer"></div>
+      <button id="scan" class="primary">Scan network now</button>
+    </nav>
+
+    <section id="stage">
+      <p class="note">
+        Phase 0 scaffold. Press <strong>Scan network now</strong> to run the ping
+        sweep and ARP table read - that path works today. mDNS, SSDP and the
+        Pi-hole lease read are stubs waiting for phase 1.
+      </p>
+      <p class="note">Phase 5 replaces this whole renderer with the design in <code>prototype.html</code>.</p>
+      <div id="log"></div>
+      <table id="devices"><thead><tr>
+        <th>IP</th><th>MAC</th><th>Name</th><th>Vendor</th><th>Found via</th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+  </main>
+
+  <footer><span id="status">Idle</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>

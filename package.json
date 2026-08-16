@@ -1,0 +1,53 @@
+{
+  "name": "meshwatch",
+  "productName": "Meshwatch",
+  "version": "0.1.0",
+  "description": "Home network monitoring dashboard - discovery, topology, firmware audit, TP-Link and Pi-hole control",
+  "main": "src/main/index.js",
+  "author": "Home Monitoring",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "start:debug": "electron . --enable-logging",
+    "test:discovery": "node scripts/test-discovery.js",
+    "build:win": "electron-builder --win nsis",
+    "build:mac": "electron-builder --mac dmg",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.5"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "bonjour-service": "^1.2.1",
+    "node-ssdp": "^4.0.1",
+    "ping": "^0.4.4",
+    "ssh2": "^1.15.0"
+  },
+  "build": {
+    "appId": "com.homemonitoring.meshwatch",
+    "productName": "Meshwatch",
+    "files": [
+      "src/**/*",
+      "config/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities"
+    }
+  }
+}

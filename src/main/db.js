@@ -75,7 +75,32 @@ function init() {
     if (!existingColumns.has(name)) db.exec("ALTER TABLE devices ADD COLUMN " + name + " " + type);
   }
 
+  migrateLegacyPiKeys();
+
   return db;
+}
+
+// This install already has pihole_* settings from before the Pi-hole/AdGuard
+// rename (the Pi was discovered and confirmed before this rename existed).
+// One-time copy so existing users don't lose their remembered Pi.
+function migrateLegacyPiKeys() {
+  const pairs = [
+    ["pihole_discovered", "pi_discovered"],
+    ["pihole_mac", "pi_mac"],
+    ["pihole_ip", "pi_ip"],
+    ["pihole_ssh_port", "pi_ssh_port"],
+    ["pihole_ssh_user", "pi_ssh_user"],
+    ["pihole_ssh_key", "pi_ssh_key"]
+  ];
+  for (const [oldKey, newKey] of pairs) {
+    const oldVal = getSetting(oldKey, null);
+    const newVal = getSetting(newKey, null);
+    if (oldVal != null && newVal == null) setSetting(newKey, oldVal);
+  }
+  // Credential vault secret rename: pihole_api -> dns_api (see credentials.js).
+  const oldSecret = getSetting("secret:pihole_api", null);
+  const newSecret = getSetting("secret:dns_api", null);
+  if (oldSecret != null && newSecret == null) setSetting("secret:dns_api", oldSecret);
 }
 
 function recordScan(devices) {
@@ -137,7 +162,7 @@ function recordScan(devices) {
     }
   });
   tx(devices);
-  notePiHoleDiscovery(devices);
+  notePiDiscovery(devices);
   return devices.length;
 }
 
@@ -317,7 +342,7 @@ function getSettings(keys) {
   return out;
 }
 
-function looksLikePiHole(d) {
+function looksLikePi(d) {
   if (!d) return false;
   if (d.type === "dns-dhcp" || d.control === "ssh") return true;
   const vendor = String(d.vendor || "").toLowerCase();
@@ -332,22 +357,22 @@ function looksLikePiHole(d) {
 
 // Remember that this machine's LAN once had a Pi / Pi-hole so the sidebar
 // entry can stay available even when the Pi is offline on a later scan.
-function notePiHoleDiscovery(devices) {
-  const hit = (devices || []).find(looksLikePiHole);
-  if (!hit) return getPiHoleState();
+function notePiDiscovery(devices) {
+  const hit = (devices || []).find(looksLikePi);
+  if (!hit) return getPiState();
 
-  setSetting("pihole_discovered", "1");
-  if (hit.mac) setSetting("pihole_mac", hit.mac);
-  if (hit.ip) setSetting("pihole_ip", hit.ip);
-  return getPiHoleState();
+  setSetting("pi_discovered", "1");
+  if (hit.mac) setSetting("pi_mac", hit.mac);
+  if (hit.ip) setSetting("pi_ip", hit.ip);
+  return getPiState();
 }
 
-function getPiHoleState() {
-  const discovered = getSetting("pihole_discovered") === "1";
-  const mac = getSetting("pihole_mac");
-  const ip = getSetting("pihole_ip");
-  const sshPortRaw = getSetting("pihole_ssh_port");
-  const sshUser = getSetting("pihole_ssh_user") || "admin";
+function getPiState() {
+  const discovered = getSetting("pi_discovered") === "1";
+  const mac = getSetting("pi_mac");
+  const ip = getSetting("pi_ip");
+  const sshPortRaw = getSetting("pi_ssh_port");
+  const sshUser = getSetting("pi_ssh_user") || "admin";
   let sshPort = Number(sshPortRaw);
   if (!Number.isFinite(sshPort) || sshPort < 1 || sshPort > 65535) {
     // No user preference yet — standard SSH. Custom ports (2222, etc.) are
@@ -357,43 +382,43 @@ function getPiHoleState() {
 
   // Live match from the last scan, if still present.
   const live = listDevices().find((d) =>
-    (mac && d.mac === mac) || looksLikePiHole(d)
+    (mac && d.mac === mac) || looksLikePi(d)
   ) || null;
 
   if (live) {
-    setSetting("pihole_discovered", "1");
-    if (live.mac) setSetting("pihole_mac", live.mac);
-    if (live.ip) setSetting("pihole_ip", live.ip);
+    setSetting("pi_discovered", "1");
+    if (live.mac) setSetting("pi_mac", live.mac);
+    if (live.ip) setSetting("pi_ip", live.ip);
   }
 
   return {
     discovered: discovered || !!live,
-    remembered: getSetting("pihole_discovered") === "1",
+    remembered: getSetting("pi_discovered") === "1",
     mac: (live && live.mac) || mac || null,
     ip: (live && live.ip) || ip || null,
     sshPort: sshPort,
     sshUser,
-    keyPath: getSetting("pihole_ssh_key"),
+    keyPath: getSetting("pi_ssh_key"),
     online: !!live
   };
 }
 
-function setPiHolePrefs({ sshPort, sshUser } = {}) {
+function setPiPrefs({ sshPort, sshUser } = {}) {
   if (sshPort != null && sshPort !== "") {
     const n = Number(sshPort);
     if (!Number.isFinite(n) || n < 1 || n > 65535) {
       return { ok: false, reason: "SSH port must be between 1 and 65535" };
     }
-    setSetting("pihole_ssh_port", String(Math.floor(n)));
+    setSetting("pi_ssh_port", String(Math.floor(n)));
   }
   if (sshUser != null) {
     const user = String(sshUser).trim();
     if (!user) {
       return { ok: false, reason: "SSH username cannot be empty" };
     }
-    setSetting("pihole_ssh_user", user);
+    setSetting("pi_ssh_user", user);
   }
-  return { ok: true, state: getPiHoleState() };
+  return { ok: true, state: getPiState() };
 }
 
 function listDismissedFindingKeys() {
@@ -419,7 +444,7 @@ module.exports = {
   getPrefs, setPrefs, DEFAULT_PREFS,
   saveCredential, listCredentialMeta, getCredential, removeCredential,
   getSetting, setSetting, getSettings,
-  looksLikePiHole, notePiHoleDiscovery, getPiHoleState, setPiHolePrefs,
+  looksLikePi, notePiDiscovery, getPiState, setPiPrefs,
   listDismissedFindingKeys, dismissFinding, restoreFinding,
   handle: () => db
 };

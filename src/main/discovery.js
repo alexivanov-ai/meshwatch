@@ -239,7 +239,7 @@ function ssdpSearch(durationMs = 4000) {
 
 async function dhcpLeases() {
   try {
-    return await require("./pihole").leases();
+    return await require("./dns").leases();
   } catch (e) {
     return [];
   }
@@ -771,7 +771,7 @@ async function run({ onProgress } = {}) {
   } catch (e) { /* topology stays estimated */ }
 
   try {
-    const stats = await require("./pihole").stats();
+    const stats = await require("./dns").stats();
     if (stats && stats.available && Array.isArray(stats.talkers)) {
       for (const t of stats.talkers) {
         const hit = devices.find((d) => d.ip === t.ip || d.name === t.name);
@@ -782,7 +782,7 @@ async function run({ onProgress } = {}) {
       const pi = devices.find((d) => d.type === "dns-dhcp");
       if (pi) {
         pi.firmware = stats.firmware;
-        pi.firmwareSource = "pihole API";
+        pi.firmwareSource = "dns backend API";
       }
     }
   } catch (e) { /* optional */ }

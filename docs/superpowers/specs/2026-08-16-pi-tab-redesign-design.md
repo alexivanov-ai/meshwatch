@@ -235,16 +235,26 @@ Nav item and view render **only when `pi:state().discovered === true`**
 
 ## Documentation
 
-Update CLAUDE.md:
-- Device table row for the Raspberry Pi 5: "Pi-hole: DNS + DHCP for the
-  whole network" → "DNS/DHCP service (Pi-hole or AdGuard Home, whichever is
-  running — auto-detected), confirmed at `192.168.1.63`".
-- "The Pi-hole is the DHCP server, so its lease table is..." paragraph →
-  reworded to name whichever backend is active generically.
-- `Files` section: add `src/main/pi.js`, `src/main/dns/`,
-  `src/main/pi-services.js`; update the `pihole.js` line to reflect the
-  split (or remove it if the file is fully absorbed — confirm during
-  implementation which pieces remain, if any, under the old filename).
+**Update 2026-08-16:** user directive — CLAUDE.md must describe how the
+*application* works, not the user's home-network infrastructure. This
+supersedes the narrower fix originally planned here and folds into the
+public-repo prep at the bottom of this doc:
+- Remove the "The network this app monitors" device table entirely
+  (specific vendor models, confirmed IPs, the "this LAN uses 2222" note) —
+  none of it is needed for the app or for a future contributor to
+  understand the codebase, and it's the user's private network layout.
+- Replace anything Pi-hole-specific with the generic, auto-detected
+  DNS-backend description from this spec (no product name asserted, no
+  IP asserted).
+- Keep everything that documents how the *solution* works: hard rules,
+  discovery approach and why, credential vault design, build order, file
+  layout (updated for the `pi.js`/`dns/`/`pi-services.js` split).
+- `config/devices.json`'s `known` list stays code (not CLAUDE.md) exactly
+  as today, but the user's own confirmed entries in it
+  (`192.168.1.63`/`192.168.1.24`, port `2222`) are personal data — flagged
+  in the "Repo cleanup for public release" section below for the user to
+  decide on before publishing, since it's data, not something safe for an
+  agent to silently strip.
 
 ## Testing
 
@@ -268,6 +278,51 @@ Handled directly, no design doc: copy `option-a-grid/build/icon.png` →
 (+ `<link rel="icon">` in `index.html`), `tray/` → `build/tray/`, update
 `trayIconPath()`/`createTray()` in `src/main/index.js` for light/dark tray
 art. Verified with `npm run build:win`.
+
+## Repo cleanup for public release (final phase, after everything above)
+
+User directive: remove `design/` from the repo (working tree **and** git
+history — not just a future deletion commit), write a proper HLD and LLD,
+update README to match, and generally clear out anything that shouldn't be
+in a public repo.
+
+- **`design/` folder**: delete from the working tree — trivial. Removing it
+  from *history* means rewriting every commit that touched it (`git
+  filter-repo --path design/ --invert-paths` or equivalent), which rewrites
+  every commit hash from that point forward. This is destructive and
+  effectively irreversible once pushed, and this repo already has commits
+  authored by `github-actions[bot]` per the current git log — meaning some
+  history here may already reflect CI activity, not just local work. **Do
+  not run the history-rewrite step without explicit, separate confirmation
+  at the time**, after showing exactly which commits/files it would touch.
+- **Secret scan before publishing**: before any history rewrite or public
+  push, scan full git history (not just the working tree) for anything
+  secret-shaped — API tokens, SSH keys, passwords — since `git log` shows
+  this repo has existing history predating this session. The credential
+  vault design keeps secrets out of the *working tree* by construction, but
+  that doesn't guarantee an early commit never had one (e.g. before the
+  vault existed).
+- **`config/devices.json` personal data**: the user's confirmed IPs
+  (`192.168.1.63`, `192.168.1.24`) and SSH port (`2222`) are real network
+  details. Flag for the user to decide — reset to `null`/defaults for
+  publishing, or leave as-is — rather than silently changing data the user
+  owns.
+- **HLD**: new `docs/HLD.md` — architecture-level: process model
+  (main/renderer/preload split, WebContentsView admin browser), major
+  subsystems (discovery, DNS backend adapters, Pi system admin, credential
+  vault, audit), data flow between them, IPC boundary, why each hard rule
+  exists. No infrastructure/network specifics — describes the *application*.
+- **LLD**: new `docs/LLD.md` — module-level: file-by-file responsibilities
+  (mirrors and expands the `Files` table), DB schema (all tables after this
+  pass's additions), IPC channel catalog (`pi:*`, `device:*`, `db:*`, etc.
+  with request/response shapes), the DNS adapter contract, the PTY terminal
+  protocol, the service-detection catalog format.
+- **README**: rewrite to describe the app for a public audience — what it
+  is, screenshots/feature list, build instructions, hard rules summary
+  (privacy/security posture is a selling point, worth keeping visible) —
+  no personal network details.
+- This phase runs **after** the feature implementation above is complete
+  and working, per the user's own sequencing ("after you have finished").
 
 ## Phase 8 items — promoted, now in scope
 

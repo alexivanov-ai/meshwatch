@@ -1,5 +1,5 @@
 {
-  "subnet": "192.168.1.0/24",
+  "subnet": null,
   "known": [
     {
       "name": "Raspberry Pi 5",
@@ -24,12 +24,23 @@
       "control": "tplink"
     },
     {
-      "name": "8-port switch",
+      "name": "TL-SG108E",
+      "vendor": "TP-Link",
+      "model": "TL-SG108E",
+      "role": "switch",
+      "control": "web",
+      "confirmed": {
+        "ip": "192.168.1.24",
+        "source": "user-confirmed 2026-08-16"
+      }
+    },
+    {
+      "name": "8-port switch (unmanaged)",
       "vendor": "Unbranded",
       "model": "unknown",
       "role": "switch",
       "control": "none",
-      "note": "Unmanaged - has no IP and will never be discovered directly. Inferred only from topology."
+      "note": "Separate unmanaged switch if present - has no IP and will never be discovered directly. Inferred only from topology."
     },
     {
       "name": "Archer AX20",

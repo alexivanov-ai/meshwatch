@@ -107,7 +107,13 @@ function recordScan(devices) {
 }
 
 function listDevices() {
-  return db.prepare("SELECT * FROM devices ORDER BY last_seen DESC").all();
+  const devices = db.prepare("SELECT * FROM devices ORDER BY last_seen DESC").all();
+  const lastMethod = db.prepare("SELECT method FROM sightings WHERE mac = ? ORDER BY seen_at DESC LIMIT 1");
+  return devices.map((d) => {
+    const s = lastMethod.get(d.mac);
+    const methods = s && s.method ? String(s.method).split("+").filter(Boolean) : [];
+    return Object.assign({}, d, { methods });
+  });
 }
 
 function setNote(mac, note) {

@@ -9,13 +9,17 @@ or decide something. Never leave a broken state at the end of a phase.
 
 ## The network this app monitors
 
-Subnet `192.168.1.0/24` - user-confirmed, safe to hardcode as the scan
-boundary (hard rule 6 needs an explicit boundary regardless).
+Scan boundary is detected at runtime from the OS network interface
+(`os.networkInterfaces()` → the host's private IPv4 /24). Never hardcode a
+subnet in discovery — the same build must work on any LAN. Hard rule 6 still
+requires an explicit boundary; that boundary is whatever /24 this PC is on.
+
+This developer's home LAN (example only — not asserted by the scanner):
 
 Known models the user has told us about - **not** a claim about which IP each
 one is at. Only the gateway (found via the OS's own default-gateway route)
-and the Pi-hole (the one address the user has explicitly confirmed) have a
-known address; see "config/devices.json is a hint, not ground truth" below.
+and addresses under a `confirmed: { ip, source }` key have a known address;
+see "config/devices.json is a hint, not ground truth" below.
 There may be more devices on the network than this list, or fewer - the scan
 finds what's actually there, this list only helps label it once found.
 
@@ -23,7 +27,8 @@ finds what's actually there, this list only helps label it once found.
 | --- | --- | --- |
 | TP-Link Archer BE220 | Gateway router | Local API, unofficial |
 | Raspberry Pi 5 | Pi-hole: DNS + DHCP for the whole network, confirmed at `192.168.1.63` | REST API + SSH on port 2222 |
-| 8-port switch | Unmanaged switch | No. Infer only |
+| TP-Link TL-SG108E | Managed 8-port switch, confirmed at `192.168.1.24` | Web UI (+ SNMP where enabled) |
+| 8-port switch (unmanaged) | Unmanaged switch | No. Infer only |
 | TP-Link Archer AX20 | Router in AP mode | Local API, unofficial |
 | TP-Link RE450 | Range extender | Local API, unofficial |
 | TP-Link TL-WA1201 | Range extender | Local API, unofficial |
@@ -36,7 +41,8 @@ exhaustive or authoritative list.
 
 The Pi-hole is the DHCP server, so its lease table is the authoritative source
 of device hostnames. Always prefer a DHCP hostname over an mDNS name or an OUI
-vendor guess.
+vendor guess. Never put the OUI vendor string in the Name column — that belongs
+in Vendor.
 
 ## config/devices.json is a hint, not ground truth
 
@@ -54,13 +60,13 @@ result. Don't repeat this. The rule now:
 - `discovery.js`'s `matchKnown()` is the only place a discovered device gets
   labelled with one of these entries, and only on evidence that is itself
   discovered: an exact `confirmed.ip` match, the OS's own default-gateway
-  route (for the `gateway` role), or the device's own web UI naming its model
-  in `<title>` (see the web probe below). Vendor-only matching is deliberately
+  route (for the `gateway` role), or the device naming its model in a web
+  `<title>` or SNMP sysName/sysDescr. Vendor-only matching is deliberately
   not enough to assign a specific model - several known devices share a
   vendor (TP-Link) with no way to tell them apart from ARP/mDNS/SSDP alone.
-- A device that doesn't match any of those stays labelled by OUI vendor /
-  mDNS name / web title, with `estimated: true` - never silently assigned a
-  guessed identity.
+- A device that doesn't match any of those stays labelled by DHCP hostname /
+  mDNS / SNMP sysName / web title / model, with `estimated: true` - never
+  silently assigned a guessed identity, and never named after the OUI vendor.
 - The scan is expected to surface devices that aren't in this file at all.
   That's not a bug to fix by adding them to config; it's the discovery engine
   doing its job.
@@ -73,6 +79,13 @@ its `<title>` (routers/printers/cameras routinely self-identify there,
 unauthenticated) and whether the page looks like a login form. This is real,
 observed data - it feeds both device naming (see above) and the "does this
 have a login page" signal for the credential vault below.
+
+## SNMP probe
+
+Also part of every scan: an unauthenticated SNMPv2c GET for `sysName` and
+`sysDescr` (community `public` only). Managed switches like the TL-SG108E
+often answer here when the web title is generic. No write community, no
+credential guessing.
 
 ## Credential vault
 
@@ -107,7 +120,8 @@ vault itself is phase-1 infrastructure and already usable via IPC
 5. Any action that interrupts connectivity - rebooting a router, restarting
    pihole-FTL, rebooting the Pi - requires explicit confirmation and must warn
    how long the network will be down.
-6. Only ever scan this local subnet. No scanning of external hosts.
+6. Only ever scan this machine's local private /24 (detected at runtime). No
+   scanning of external hosts or other subnets.
 
 ## Build order
 
@@ -116,13 +130,15 @@ listed above, nothing built on top of it matters.
 
 - [x] Phase 0 - Electron scaffold, IPC, SQLite, minimal renderer
 - [x] Phase 1 - Discovery engine: ping sweep + ARP table, mDNS, SSDP, web probe,
-      OS default-gateway detection, config-drift check, local credential vault.
-      DHCP leases wiring is a real stub pending phase 2's Pi-hole credentials.
+  SNMP sysName/sysDescr, OS subnet + default-gateway detection, config-drift
+  check, local credential vault. DHCP leases wiring is a real stub pending
+  phase 2's Pi-hole credentials.
 - [ ] Phase 2 - Pi-hole: REST stats, SSH console on port 2222
 - [ ] Phase 3 - TP-Link control. Research feasibility and report before coding
 - [ ] Phase 4 - Security audit: firmware age, open ports, config weaknesses
-- [ ] Phase 5 - Rebuild the UI to match `prototype.html`
-- [ ] Phase 6 - Installers: NSIS on Windows, dmg on macOS
+- [x] Phase 5 - Rebuild the UI to match `design/Network Dashboard.dc.html`
+  (overview, inventory with click + context menu, topology, audit, Pi-hole)
+- [ ] Phase 6 - Installers: NSIS on Windows, dmg on macOS (auto-update wired)
 
 The copy-paste prompt for each phase is in `PROMPTS.md`.
 
@@ -139,15 +155,17 @@ keep the ping+ARP path as a fallback so the app still works unprivileged.
 ```
 src/main/index.js       Electron entry, window, IPC handlers
 src/main/db.js          SQLite: devices, sightings, findings, notes, credentials
-src/main/discovery.js   Ping sweep, ARP, mDNS, SSDP, gateway detection, web probe, merge
-src/main/oui.js         MAC prefix to vendor lookup (src/main/oui-data.json, full IEEE registry)
+src/main/discovery.js   Ping/ARP, mDNS, SSDP, SNMP, subnet+gateway, web probe, merge
+src/main/oui.js         MAC prefix to vendor lookup (src/main/oui-data.json)
 src/main/pihole.js      Pi-hole REST API and SSH on 2222
 src/main/tplink.js      TP-Link control. Mostly unimplemented by design
 src/main/audit.js       Security findings and scoring
 src/main/credentials.js Local credential vault (safeStorage-encrypted, keyed by MAC)
+src/main/updater.js     In-app updates from GitHub Releases (installed builds only)
 src/preload.js          The only bridge to the renderer
-src/renderer/           Interface. Rebuild from prototype.html in phase 5
+src/renderer/           Interface matched to design/Network Dashboard.dc.html
 config/devices.json     Known models/roles - see "config/devices.json is a hint" above
+design/                 Network Dashboard + Build Guide design sources
 scripts/test-discovery.js  Run discovery from the terminal, print results
-scripts/build-oui.js    Regenerate oui-data.json from the IEEE registry (offline, not runtime)
+scripts/build-oui.js    Regenerate oui-data.json from the IEEE registry (offline)
 ```

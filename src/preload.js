@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("meshwatch", {
   getTopology: () => ipcRenderer.invoke("devices:topology"),
   getDrift: () => ipcRenderer.invoke("devices:drift"),
   getAudit: () => ipcRenderer.invoke("audit:run"),
+  getSubnet: () => ipcRenderer.invoke("subnet:get"),
   setNote: (mac, note) => ipcRenderer.invoke("devices:note", { mac, note }),
 
   pihole: {
@@ -41,7 +42,6 @@ contextBridge.exposeInMainWorld("meshwatch", {
     return () => ipcRenderer.removeListener("update:status", handler);
   },
 
-  // Progress events during a scan
   onScanProgress: (cb) => {
     const handler = (_e, payload) => cb(payload);
     ipcRenderer.on("scan:progress", handler);

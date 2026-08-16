@@ -59,6 +59,7 @@ ipcMain.handle("devices:topology", () => discovery.topology(db.listDevices()));
 ipcMain.handle("devices:drift", () => discovery.detectDrift(db.listDevices()));
 ipcMain.handle("devices:note", (_e, { mac, note }) => db.setNote(mac, note));
 ipcMain.handle("audit:run", async () => audit.run(db.listDevices()));
+ipcMain.handle("subnet:get", () => discovery.detectSubnet());
 
 ipcMain.handle("pihole:stats", () => pihole.stats());
 ipcMain.handle("pihole:leases", () => pihole.leases());
@@ -111,8 +112,10 @@ ipcMain.handle("credentials:has", (_e, { mac }) => credentials.has(mac));
 ipcMain.handle("credentials:remove", (_e, { mac }) => credentials.remove(mac));
 
 ipcMain.handle("shell:open", (_e, { url }) => {
-  // Only local addresses - never open an arbitrary external URL from the renderer.
-  if (!/^https?:\/\/192\.168\./.test(url)) return { ok: false, reason: "not a local address" };
+  // Only private LAN addresses — never open an arbitrary external URL.
+  if (!/^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?(\/|$)/.test(url)) {
+    return { ok: false, reason: "not a local address" };
+  }
   shell.openExternal(url);
   return { ok: true };
 });

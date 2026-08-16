@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
 <title>Meshwatch</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -10,34 +10,132 @@
   <header>
     <span class="mark"></span>
     <strong>Meshwatch</strong>
-    <span class="sub">192.168.1.0/24 &middot; gateway Archer BE220 &middot; DNS + DHCP on Pi-hole</span>
+    <span class="sub" id="header-sub">Detecting network…</span>
+    <span class="header-right" id="version"></span>
   </header>
 
   <main>
     <nav>
-      <button class="nav on" data-view="inventory">Inventory</button>
+      <button class="nav on" data-view="overview">Overview</button>
+      <button class="nav" data-view="inventory">Inventory <span class="badge" id="badge-inventory"></span></button>
       <button class="nav" data-view="topology">Topology</button>
-      <button class="nav" data-view="audit">Security audit</button>
-      <button class="nav" data-view="pihole">Pi-hole</button>
+      <button class="nav" data-view="audit">Security audit <span class="badge" id="badge-audit"></span></button>
+      <button class="nav" data-view="pihole">Pi-hole · SSH</button>
       <div class="spacer"></div>
       <button id="scan" class="primary">Scan network now</button>
+      <div class="nav-meta" id="last-scan">No scan yet</div>
     </nav>
 
     <section id="stage">
-      <p class="note">
-        Phase 0 scaffold. Press <strong>Scan network now</strong> to run the ping
-        sweep and ARP table read - that path works today. mDNS, SSDP and the
-        Pi-hole lease read are stubs waiting for phase 1.
-      </p>
-      <p class="note">Phase 5 replaces this whole renderer with the design in <code>prototype.html</code>.</p>
-      <div id="log"></div>
-      <table id="devices"><thead><tr>
-        <th>IP</th><th>MAC</th><th>Name</th><th>Vendor</th><th>Found via</th>
-      </tr></thead><tbody></tbody></table>
+      <!-- Overview -->
+      <div class="view on" id="view-overview">
+        <div class="page-head">
+          <h1>Home network</h1>
+          <p class="lede">Everything on the wire</p>
+        </div>
+        <div class="stat-row" id="overview-stats"></div>
+        <div class="split">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Needs attention</h2>
+              <button type="button" class="ghost" data-goto="audit">Full audit</button>
+            </div>
+            <div id="overview-attention"></div>
+          </div>
+          <div class="panel score-panel">
+            <div class="muted upper">Posture score</div>
+            <div class="score" id="overview-score">—</div>
+            <p class="muted" id="overview-score-note">Run a scan, then open Security audit.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Discovery log</h2></div>
+          <div id="log" class="log"></div>
+        </div>
+      </div>
+
+      <!-- Inventory -->
+      <div class="view" id="view-inventory">
+        <div class="page-head row">
+          <div>
+            <h1>Inventory</h1>
+            <p class="lede" id="inventory-lede">0 devices</p>
+          </div>
+          <input type="search" id="inventory-filter" placeholder="Filter by name, IP, vendor…" autocomplete="off">
+        </div>
+        <table id="devices">
+          <thead>
+            <tr>
+              <th>Name</th><th>IP</th><th>MAC</th><th>Vendor</th><th>Type</th><th>Found via</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Topology -->
+      <div class="view" id="view-topology">
+        <div class="page-head">
+          <h1>Topology</h1>
+          <p class="lede">Gateway and what hangs off it · inferred links marked</p>
+        </div>
+        <div id="topology-tree" class="topo"></div>
+      </div>
+
+      <!-- Audit -->
+      <div class="view" id="view-audit">
+        <div class="page-head row">
+          <div>
+            <h1>Audit</h1>
+            <p class="lede">Firmware age and exposure</p>
+          </div>
+          <button type="button" class="secondary" id="run-audit">Run audit</button>
+        </div>
+        <div class="stat-row" id="audit-stats"></div>
+        <div id="audit-list"></div>
+      </div>
+
+      <!-- Pi-hole -->
+      <div class="view" id="view-pihole">
+        <div class="page-head">
+          <h1>Pi-hole · SSH</h1>
+          <p class="lede">DNS stats and remote shell (phase 2 wires credentials)</p>
+        </div>
+        <div class="stat-row" id="pihole-stats"></div>
+        <div class="panel">
+          <div class="panel-head"><h2>Commands</h2></div>
+          <div class="btn-row" id="pihole-actions">
+            <button type="button" data-cmd="pihole status">pihole status</button>
+            <button type="button" data-cmd="pihole -g">Update gravity</button>
+            <button type="button" data-cmd="systemctl restart pihole-FTL" class="warn">Restart FTL</button>
+            <button type="button" data-cmd="cat /etc/pihole/dhcp.leases">DHCP leases</button>
+          </div>
+          <form id="pihole-form" class="cmd-form">
+            <input type="text" id="pihole-cmd" placeholder="Arbitrary command…" autocomplete="off">
+            <button type="submit">Run</button>
+          </form>
+          <pre id="pihole-out" class="log"></pre>
+        </div>
+      </div>
     </section>
+
+    <!-- Device detail drawer -->
+    <aside id="detail" class="detail" hidden>
+      <div class="detail-head">
+        <h2 id="detail-name">Device</h2>
+        <button type="button" class="icon" id="detail-close" aria-label="Close">×</button>
+      </div>
+      <div id="detail-body"></div>
+      <div class="detail-actions" id="detail-actions"></div>
+    </aside>
   </main>
 
-  <footer><span id="status">Idle</span></footer>
+  <footer>
+    <span id="status">Idle</span>
+    <span id="update-status"></span>
+  </footer>
+
+  <div id="ctx" class="ctx" hidden></div>
   <script src="app.js"></script>
 </body>
 </html>

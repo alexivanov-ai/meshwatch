@@ -8,7 +8,7 @@ topology, firmware auditing, TP-Link control and Pi-hole management.
 ## Start here
 
 1. Open `build-guide.html` in a browser and read sections 1 and 2.
-2. Install Node.js LTS, Git, VS Code and Npcap as the guide describes.
+2. Install Node.js 24 LTS (or newer), Git, VS Code and Npcap as the guide describes.
 3. In this folder, run the three commands below.
 4. Phase 1 (discovery) is done - open `PROMPTS.md` and paste phase 2 into Claude Code next.
 

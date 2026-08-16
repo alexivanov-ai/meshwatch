@@ -18,7 +18,7 @@ const state = {
   lastScanAt: null,
   scanning: false,
   scanProgress: 0,
-  auditFilter: "all", // all | critical | high | medium | low
+  auditFilter: "all", // all | critical | high | medium | low | dismissed
   prefs: loadPrefs()
 };
 
@@ -45,16 +45,17 @@ function savePrefs() {
 
   const sshPort = $("#pref-ssh-port").value;
   const sshUser = $("#pref-ssh-user").value;
-  if (!$("#pihole-prefs-panel").hidden) {
-    window.meshwatch.pihole.setPrefs({ sshPort, sshUser }).then((r) => {
-      if (r && !r.ok) toast(r.reason || "Could not save SSH settings");
-      else toast("Preferences saved");
-      updatePiholeNav();
-      loadPreferences();
-    });
-  } else {
+  window.meshwatch.pihole.setPrefs({ sshPort, sshUser }).then((r) => {
+    if (r && !r.ok) {
+      toast(r.reason || "Could not save SSH settings");
+      return;
+    }
+    if (r && r.state) state.pihole = r.state;
     toast("Preferences saved");
-  }
+    loadPreferences();
+  }).catch((e) => {
+    toast("Could not save preferences: " + (e && e.message || e));
+  });
   renderInventory();
 }
 
@@ -199,6 +200,9 @@ function go(view) {
   if (view === "preferences") loadPreferences();
   if (view === "discovery") updateScanChrome();
   hideCtx();
+  // Device panel stays open while switching rows in Inventory or Topology;
+  // close it when leaving for any other left-nav view.
+  if (view !== "inventory" && view !== "topology") closeDetail();
 }
 
 async function updatePiholeNav() {
@@ -375,8 +379,10 @@ function renderOverview() {
   if (state.audit) {
     $("#overview-score").textContent = String(state.audit.score);
     const c = state.audit.counts || {};
+    const dismissedN = state.audit.dismissedCount || 0;
     $("#overview-score-note").textContent =
-      (c.critical || 0) + " critical · " + (c.high || 0) + " high · " + (c.medium || 0) + " medium";
+      (c.critical || 0) + " critical · " + (c.high || 0) + " high · " + (c.medium || 0) + " medium" +
+      (dismissedN ? " · " + dismissedN + " dismissed" : "");
   }
 }
 
@@ -389,35 +395,118 @@ function renderTopology() {
     return;
   }
 
-  function paint(nodes, isRoot) {
-    const wrap = document.createElement("div");
-    for (const n of nodes) {
-      const node = document.createElement("div");
-      node.className = "topo-node" + (isRoot ? " root" : "");
-      const kids = (n.children && n.children.length) || childCount(n.mac);
-      const card = document.createElement("div");
-      card.className = "topo-card";
-      card.innerHTML =
-        "<strong>" + escapeHtml(n.name || "Device") + "</strong>" +
-        "<span>" + escapeHtml((n.ip || "") + (n.type ? " · " + roleLabel(n.type) : "")) + "</span>" +
-        '<div class="topo-meta"><span>' + kids + " downstream</span>" +
-        (n.estimated ? '<span class="est">link estimated</span>' : "") + "</div>";
-      card.addEventListener("click", () => {
-        const d = state.devices.find((x) => x.mac === n.mac);
-        if (d) openDetail(d);
+  const rows = [];
+  function walk(nodes, depth, isLastSiblings) {
+    nodes.forEach((n, i) => {
+      const isLast = i === nodes.length - 1;
+      const kids = (n.children && n.children.length) || 0;
+      const device = state.devices.find((x) => x.mac === n.mac) || n;
+      const online = isOnline(device);
+      const risk = deviceRisk(device);
+      rows.push({
+        n,
+        device,
+        depth,
+        isLast,
+        spine: isLastSiblings.slice(),
+        kids,
+        online,
+        risk,
+        estimated: !!n.estimated
       });
-      card.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        const d = state.devices.find((x) => x.mac === n.mac);
-        if (d) openCtx(e.clientX, e.clientY, d);
-      });
-      node.appendChild(card);
-      if (n.children && n.children.length) node.appendChild(paint(n.children, false));
-      wrap.appendChild(node);
-    }
-    return wrap;
+      if (n.children && n.children.length) {
+        walk(n.children, depth + 1, isLastSiblings.concat(isLast));
+      }
+    });
   }
-  root.appendChild(paint(tree, true));
+  walk(tree, 0, []);
+
+  const list = document.createElement("div");
+  list.className = "topo-list";
+
+  for (const row of rows) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "topo-row" +
+      (row.n.mac === state.selectedMac ? " on" : "") +
+      (row.depth === 0 ? " root" : "") +
+      (row.estimated ? " estimated" : "");
+    btn.setAttribute("role", "treeitem");
+    btn.style.setProperty("--depth", String(row.depth));
+
+    const rail = document.createElement("span");
+    rail.className = "topo-rail";
+    rail.setAttribute("aria-hidden", "true");
+    for (let d = 0; d < row.depth; d++) {
+      const col = document.createElement("span");
+      col.className = "topo-rail-col" + (row.spine[d] ? " quiet" : "");
+      rail.appendChild(col);
+    }
+    if (row.depth > 0) {
+      const elbow = document.createElement("span");
+      elbow.className = "topo-elbow" + (row.isLast ? " last" : "") + (row.estimated ? " est" : "");
+      rail.appendChild(elbow);
+    }
+
+    const dot = document.createElement("span");
+    dot.className = "topo-dot" +
+      (row.online ? "" : " off") +
+      (row.risk === "critical" || row.risk === "high" ? " risk" : "");
+
+    const main = document.createElement("span");
+    main.className = "topo-main";
+    const title = document.createElement("span");
+    title.className = "topo-name";
+    title.textContent = row.n.name || "Device";
+    const sub = document.createElement("span");
+    sub.className = "topo-sub";
+    sub.textContent = [
+      roleLabel(row.n.type),
+      row.n.ip || null
+    ].filter(Boolean).join(" · ");
+    main.appendChild(title);
+    main.appendChild(sub);
+
+    const right = document.createElement("span");
+    right.className = "topo-right";
+    if (row.kids > 0) {
+      const branch = document.createElement("span");
+      branch.className = "topo-branch";
+      branch.textContent = row.kids === 1 ? "1 downstream" : row.kids + " downstream";
+      right.appendChild(branch);
+    }
+    if (row.estimated) {
+      const est = document.createElement("span");
+      est.className = "topo-est";
+      est.textContent = "Estimated";
+      right.appendChild(est);
+    }
+    if (row.risk && row.risk !== "ok") {
+      const badge = document.createElement("span");
+      badge.className = "topo-risk " + row.risk;
+      badge.textContent = row.risk;
+      right.appendChild(badge);
+    }
+
+    btn.appendChild(rail);
+    btn.appendChild(dot);
+    btn.appendChild(main);
+    btn.appendChild(right);
+
+    btn.addEventListener("click", () => {
+      const d = state.devices.find((x) => x.mac === row.n.mac);
+      if (d) openDetail(d);
+    });
+    btn.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const d = state.devices.find((x) => x.mac === row.n.mac);
+      if (d) openCtx(e.clientX, e.clientY, d);
+    });
+
+    list.appendChild(btn);
+  }
+
+  root.appendChild(list);
 }
 
 function renderAudit() {
@@ -433,13 +522,16 @@ function renderAudit() {
   const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
   const c = state.audit.counts || {};
   const filter = state.auditFilter || "all";
+  const active = state.audit.findings || [];
+  const dismissed = state.audit.dismissedFindings || [];
 
   const chips = [
-    { key: "all", label: "All", n: (state.audit.findings || []).length },
+    { key: "all", label: "Open", n: active.length },
     { key: "critical", label: "Critical", n: c.critical || 0 },
     { key: "high", label: "High", n: c.high || 0 },
     { key: "medium", label: "Medium", n: c.medium || 0 },
-    { key: "low", label: "Low", n: c.low || 0 }
+    { key: "low", label: "Low", n: c.low || 0 },
+    { key: "dismissed", label: "Dismissed", n: dismissed.length }
   ];
 
   stats.innerHTML =
@@ -462,7 +554,8 @@ function renderAudit() {
 
   $("#badge-audit").textContent = (c.critical || 0) || "";
 
-  let findings = (state.audit.findings || []).slice();
+  const showingDismissed = filter === "dismissed";
+  let findings = showingDismissed ? dismissed.slice() : active.slice();
   findings.sort((a, b) => {
     const sa = SEV_ORDER[a.severity] != null ? SEV_ORDER[a.severity] : 9;
     const sb = SEV_ORDER[b.severity] != null ? SEV_ORDER[b.severity] : 9;
@@ -470,20 +563,27 @@ function renderAudit() {
     return String(a.title || "").localeCompare(String(b.title || ""));
   });
 
-  if (filter !== "all") {
+  if (!showingDismissed && filter !== "all") {
     findings = findings.filter((f) => f.severity === filter);
   }
 
   if (!findings.length) {
-    box.innerHTML = '<p class="empty">No ' + (filter === "all" ? "" : filter + " ") + "findings.</p>";
+    box.innerHTML = '<p class="empty">' +
+      (showingDismissed
+        ? "No dismissed findings."
+        : ("No " + (filter === "all" ? "open " : filter + " ") + "findings.")) +
+      "</p>";
   }
 
   for (const f of findings) {
     const div = document.createElement("div");
-    div.className = "finding";
-    const actionBtn = f.action && /block internet/i.test(f.action)
+    div.className = "finding" + (showingDismissed ? " dismissed" : "");
+    const actionBtn = !showingDismissed && f.action && /block internet/i.test(f.action)
       ? '<button type="button" class="secondary finding-block" data-mac="' + escapeHtml(f.mac || "") + '">Block internet</button>'
       : "";
+    const dismissBtn = showingDismissed
+      ? '<button type="button" class="secondary finding-restore" data-key="' + escapeHtml(f.key || "") + '">Restore</button>'
+      : '<button type="button" class="secondary finding-dismiss" data-key="' + escapeHtml(f.key || "") + '">Dismiss</button>';
     div.innerHTML =
       '<span class="sev ' + escapeHtml(f.severity) + '">' + escapeHtml(f.severity) + "</span>" +
       "<div><h3>" + escapeHtml(f.title) + "</h3>" +
@@ -491,12 +591,42 @@ function renderAudit() {
       '<span class="meta">' + escapeHtml([f.device, f.ip, f.reference].filter(Boolean).join(" · ")) + "</span>" +
       (f.action ? "<p><strong>Action:</strong> " + escapeHtml(f.action) + "</p>" : "") +
       (f.estimated ? '<span class="est">estimate</span>' : "") +
-      "</div>" + actionBtn;
+      (showingDismissed ? '<span class="meta">Dismissed — not counted in score</span>' : "") +
+      "</div>" +
+      '<div class="finding-actions">' + dismissBtn + actionBtn + "</div>";
     box.appendChild(div);
   }
   $$(".finding-block", box).forEach((b) => {
     b.addEventListener("click", () => {
-      toast("Internet blocking needs Pi-hole + router hooks — phase 4");
+      toast("Internet blocking is not available yet — it needs a live Pi-hole API connection.");
+    });
+  });
+  $$(".finding-dismiss", box).forEach((b) => {
+    b.addEventListener("click", async () => {
+      const key = b.dataset.key;
+      if (!key) return;
+      const r = await window.meshwatch.dismissFinding(key);
+      if (r && r.ok && r.audit) {
+        state.audit = r.audit;
+        toast("Finding dismissed — score " + r.audit.score);
+        renderAudit();
+      } else {
+        toast((r && r.reason) || "Could not dismiss finding");
+      }
+    });
+  });
+  $$(".finding-restore", box).forEach((b) => {
+    b.addEventListener("click", async () => {
+      const key = b.dataset.key;
+      if (!key) return;
+      const r = await window.meshwatch.restoreFinding(key);
+      if (r && r.ok && r.audit) {
+        state.audit = r.audit;
+        toast("Finding restored — score " + r.audit.score);
+        renderAudit();
+      } else {
+        toast((r && r.reason) || "Could not restore finding");
+      }
     });
   });
   renderInventory();
@@ -530,7 +660,7 @@ async function loadPihole() {
         ["Blocked %", "—"],
         ["SSH port", (target && target.port) || "—"]
       ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
-      blocked.innerHTML = '<p class="empty">' + escapeHtml((s && s.reason) || "Phase 2 will wire the Pi-hole API token.") + "</p>";
+      blocked.innerHTML = '<p class="empty">' + escapeHtml((s && s.reason) || "Pi-hole API is not connected yet. Save the API token in Preferences when ready.") + "</p>";
       const where = target && target.host
         ? (target.user + "@" + target.host + " -p " + target.port)
         : "host not set";
@@ -591,6 +721,7 @@ function updateScanChrome() {
 async function openDetail(d) {
   state.selectedMac = d.mac;
   renderInventory();
+  if (state.view === "topology") renderTopology();
   const el = $("#detail");
   el.hidden = false;
   const online = isOnline(d);
@@ -643,7 +774,7 @@ async function openDetail(d) {
   primary.className = "primary-inline";
   if (behind) {
     primary.textContent = "Update firmware to " + fwLatest;
-    primary.addEventListener("click", () => toast("Firmware update needs TP-Link control — phase 3"));
+    primary.addEventListener("click", () => toast("Firmware update from Meshwatch is not available yet. Use the device admin page for now."));
   } else if (d.estimated || fw === "—") {
     primary.textContent = "Record firmware manually";
     primary.addEventListener("click", async () => {
@@ -673,7 +804,7 @@ async function openDetail(d) {
   const note = document.createElement("div");
   note.className = "action-note";
   note.textContent = behind
-    ? "Fetches from the vendor catalogue once phase 3 control is live."
+    ? "Vendor catalogue updates are not wired yet. Open the device admin page to check for firmware."
     : (d.estimated || fw === "—" ? "No API to query. Type the version from the device label or admin page." : "Runs another full subnet sweep.");
   actions.appendChild(note);
 
@@ -709,7 +840,7 @@ async function openDetail(d) {
   const block = document.createElement("button");
   block.type = "button";
   block.textContent = "Block internet access";
-  block.addEventListener("click", () => toast("Blocking via Pi-hole / gateway — phase 4"));
+  block.addEventListener("click", () => toast("Internet blocking is not available yet — it needs a live Pi-hole API connection."));
   actions.appendChild(block);
 
   const noteBtn = document.createElement("button");
@@ -757,7 +888,7 @@ async function openDetail(d) {
           toast((r.reason || "Not available") + " — opening admin in Meshwatch");
           openInAppBrowser(r.adminPage);
         } else if (r && r.ok) toast(label + " ok");
-        else toast((r && r.reason) || "Not implemented — phase 3");
+        else toast((r && r.reason) || "This control action is not available yet");
       });
       actions.appendChild(b);
     }
@@ -789,6 +920,7 @@ function closeDetail() {
   $("#detail").hidden = true;
   state.selectedMac = null;
   renderInventory();
+  if (state.view === "topology") renderTopology();
 }
 
 function openCtx(x, y, d) {
@@ -815,7 +947,7 @@ function openCtx(x, y, d) {
       toast("Firmware recorded");
       renderInventory();
     }],
-    ["Block internet…", () => toast("Internet blocking — phase 4")],
+    ["Block internet…", () => toast("Internet blocking is not available yet — it needs a live Pi-hole API connection.")],
     ["Add note…", async () => {
       const note = await askText({
         title: "Note for " + (d.name || d.ip || "device"),
@@ -908,17 +1040,17 @@ async function loadPreferences() {
 
   const pi = await updatePiholeNav();
   const panel = $("#pihole-prefs-panel");
-  panel.hidden = !pi.discovered;
-  if (pi.discovered) {
-    $("#pref-ssh-port").value = pi.sshPort || 22;
-    $("#pref-ssh-user").value = pi.sshUser || "admin";
-    $("#pihole-host-value").textContent = pi.ip
-      ? ((pi.online ? "Online · " : "Last seen · ") + pi.ip + (pi.mac ? " · " + pi.mac : ""))
-      : "MAC/IP remembered after the next scan";
-    $("#pihole-host-note").textContent = pi.remembered
-      ? "Kept after the first discovery so the Pi-hole panel stays available offline."
-      : "Detected on this network.";
-  }
+  // Always show SSH prefs — port/user are needed before or without a live
+  // discovery (this LAN uses a non-default SSH port).
+  panel.hidden = false;
+  $("#pref-ssh-port").value = (pi && pi.sshPort) || 22;
+  $("#pref-ssh-user").value = (pi && pi.sshUser) || "admin";
+  $("#pihole-host-value").textContent = pi && pi.ip
+    ? ((pi.online ? "Online · " : "Last seen · ") + pi.ip + (pi.mac ? " · " + pi.mac : ""))
+    : "Not remembered yet — run a scan";
+  $("#pihole-host-note").textContent = pi && pi.remembered
+    ? "Kept after the first discovery so the Pi-hole panel stays available offline."
+    : (pi && pi.discovered ? "Detected on this network." : "Run a scan to remember the Pi-hole host.");
 
   const sel = $("#cred-mac");
   sel.textContent = "";

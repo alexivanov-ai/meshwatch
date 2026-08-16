@@ -11,11 +11,20 @@
 // Two absolute rules:
 //   - Never invent a CVE. Real reference or "unverifiable".
 //   - Anything inferred is labelled an estimate in the output.
+//
+// Dismissals: the user can dismiss a finding (e.g. "no firmware" on a TV
+// they accept). Dismissed keys live in SQLite and are excluded from the
+// posture score until restored. Keys are stable rule:mac pairs so a re-run
+// of the audit keeps the dismissal.
 
-const config = require("../../config/devices.json");
 const oui = require("./oui");
+const db = require("./db");
 
 const SEVERITY_WEIGHT = { critical: 18, high: 10, medium: 5, low: 2 };
+
+function findingKey(rule, mac) {
+  return rule + ":" + String(mac || "").toLowerCase();
+}
 
 // discovery.js's matchKnown() already resolves this onto the device record
 // at scan time (config/devices.json has no per-device IP to look up by).
@@ -23,13 +32,15 @@ function endOfSupport(device) {
   return device.end_of_support || device.endOfSupport || null;
 }
 
-function run(devices) {
+function collect(devices) {
   const findings = [];
 
   for (const d of devices) {
     const eos = endOfSupport(d);
     if (eos) {
       findings.push({
+        key: findingKey("eos", d.mac),
+        rule: "eos",
         mac: d.mac, device: d.name, ip: d.ip,
         severity: "critical",
         title: d.name + " is past end of support",
@@ -42,6 +53,8 @@ function run(devices) {
 
     if (d.firmware && d.firmware_latest && d.firmware !== d.firmware_latest) {
       findings.push({
+        key: findingKey("firmware-behind", d.mac),
+        rule: "firmware-behind",
         mac: d.mac, device: d.name, ip: d.ip,
         severity: "high",
         title: d.name + " firmware is behind",
@@ -56,6 +69,8 @@ function run(devices) {
     const noHostname = !d.name || d.name === "Unidentified host";
     if (noVendor && noHostname) {
       findings.push({
+        key: findingKey("unrecognised", d.mac),
+        rule: "unrecognised",
         mac: d.mac, device: d.name || "Unidentified host", ip: d.ip,
         severity: "critical",
         title: "Unrecognised host on the network",
@@ -68,12 +83,14 @@ function run(devices) {
 
     if (d.estimated) {
       findings.push({
+        key: findingKey("no-firmware", d.mac),
+        rule: "no-firmware",
         mac: d.mac, device: d.name, ip: d.ip,
         severity: "medium",
         title: d.name + " reports no firmware version",
         detail: "No management API, no version banner and no vendor feed. Firmware age cannot be established.",
         reference: "unverifiable",
-        action: "Record the version manually from the device itself",
+        action: "Record the version manually from the device itself, or dismiss if you accept the gap",
         estimated: true
       });
     }
@@ -82,13 +99,53 @@ function run(devices) {
   // TODO phase 4: port scanning against config.riskyPorts,
   // router configuration checks, and the DNS single-point-of-failure check.
 
-  const penalty = findings.reduce((sum, f) => sum + (SEVERITY_WEIGHT[f.severity] || 0), 0);
-  const score = Math.max(0, 100 - penalty);
-
-  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
-  for (const f of findings) counts[f.severity] = (counts[f.severity] || 0) + 1;
-
-  return { score, counts, findings, ranAt: Date.now() };
+  return findings;
 }
 
-module.exports = { run };
+function scoreFindings(findings) {
+  const penalty = findings.reduce((sum, f) => sum + (SEVERITY_WEIGHT[f.severity] || 0), 0);
+  const score = Math.max(0, 100 - penalty);
+  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const f of findings) counts[f.severity] = (counts[f.severity] || 0) + 1;
+  return { score, counts };
+}
+
+function run(devices) {
+  const dismissed = new Set(db.listDismissedFindingKeys());
+  const all = collect(devices || []);
+  const findings = [];
+  const dismissedFindings = [];
+
+  for (const f of all) {
+    if (dismissed.has(f.key)) {
+      dismissedFindings.push(Object.assign({}, f, { dismissed: true }));
+    } else {
+      findings.push(Object.assign({}, f, { dismissed: false }));
+    }
+  }
+
+  const { score, counts } = scoreFindings(findings);
+
+  return {
+    score,
+    counts,
+    findings,
+    dismissedFindings,
+    dismissedCount: dismissedFindings.length,
+    ranAt: Date.now()
+  };
+}
+
+function dismiss(key) {
+  if (!key || typeof key !== "string") return { ok: false, reason: "Missing finding key" };
+  db.dismissFinding(key);
+  return { ok: true, audit: run(db.listDevices()) };
+}
+
+function restore(key) {
+  if (!key || typeof key !== "string") return { ok: false, reason: "Missing finding key" };
+  db.restoreFinding(key);
+  return { ok: true, audit: run(db.listDevices()) };
+}
+
+module.exports = { run, dismiss, restore, findingKey };

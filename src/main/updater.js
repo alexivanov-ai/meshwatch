@@ -28,6 +28,14 @@ function setup() {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  // Repo was renamed from home-monitoring → meshwatch; pin the feed so
+  // electron-updater does not follow a stale publish.repo baked into older
+  // app-update.yml copies during local testing.
+  autoUpdater.setFeedURL({
+    provider: "github",
+    owner: "alexivanov-ai",
+    repo: "meshwatch"
+  });
 
   autoUpdater.on("checking-for-update", () => {
     checking = true;

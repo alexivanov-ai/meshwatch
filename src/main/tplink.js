@@ -46,15 +46,14 @@ function capabilities(d) {
     model: d.model,
     controllable: true,
     adminPage: "http://" + ip,
-    actions: ACTIONS.map(a => ({ action: a, status: "unknown - phase 3 research" }))
+    actions: ACTIONS.map(a => ({ action: a, status: "unavailable" }))
   };
 }
 
 async function action(d, name, args) {
   if (!d) return { ok: false, reason: "device not found in the last scan" };
   if (d.control === "readonly") return { ok: false, reason: "this device is read-only" };
-  // TODO phase 3: real implementation for the actions research proves viable.
-  return { ok: false, reason: "not implemented - phase 3", adminPage: "http://" + d.ip, action: name, args };
+  return { ok: false, reason: "not available yet", adminPage: "http://" + d.ip, action: name, args };
 }
 
 module.exports = { capabilities, action, isDisruptive, ACTIONS };

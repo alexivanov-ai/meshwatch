@@ -74,17 +74,17 @@
       <div class="view" id="view-topology">
         <div class="page-head">
           <h1>Topology</h1>
-          <p class="lede">Gateway and what hangs off it · inferred links marked</p>
+          <p class="lede">Who hangs off whom · gateway at the top</p>
         </div>
-        <p class="topo-note">Uplink inferred from DHCP lease origin, per-node client tables and RSSI where available. Links without a real parent table are estimates — unmanaged gear reports nothing upstream.</p>
-        <div id="topology-tree" class="topo"></div>
+        <p class="topo-note">Read top to bottom: Internet → gateway → switches / APs → clients. Dashed links and “estimated” mean we inferred the parent — unmanaged gear reports nothing upstream.</p>
+        <div id="topology-tree" class="topo" role="tree"></div>
       </div>
 
       <div class="view" id="view-audit">
         <div class="page-head row">
           <div>
             <h1>Audit</h1>
-            <p class="lede">Firmware age and exposure</p>
+            <p class="lede">Firmware age and exposure. Dismiss accepted gaps to improve the score.</p>
           </div>
           <button type="button" class="secondary" id="run-audit">Run audit</button>
         </div>
@@ -101,7 +101,7 @@
         <div class="split">
           <div class="panel">
             <div class="panel-head"><h2>Top blocked</h2></div>
-            <div id="pihole-blocked" class="empty">Connect Pi-hole credentials in Preferences (phase 2 wires the API).</div>
+            <div id="pihole-blocked" class="empty">Pi-hole API is not connected yet. Add the API token in Preferences when ready.</div>
           </div>
           <div class="panel">
             <div class="panel-head"><h2>Host</h2></div>
@@ -133,7 +133,7 @@
             <h1>Discovery</h1>
             <p class="lede">Subnet sweep</p>
           </div>
-          <button type="button" class="secondary" id="rescan">Rescan</button>
+          <button type="button" class="primary-inline" id="rescan">Rescan</button>
         </div>
         <div class="panel">
           <div class="scan-progress-head">
@@ -177,9 +177,9 @@
           </div>
         </div>
 
-        <div class="panel" id="pihole-prefs-panel" style="margin-top:20px" hidden>
+        <div class="panel" id="pihole-prefs-panel" style="margin-top:20px">
           <div class="panel-head"><h2>Pi-hole · SSH</h2></div>
-          <p class="muted" id="pihole-prefs-note">Shown because a Pi / Pi-hole was discovered on this network. Remains available even if it is offline later.</p>
+          <p class="muted" id="pihole-prefs-note">SSH connection settings for the Pi-hole. Saved on this PC and used for shell commands.</p>
           <div class="prefs-list">
             <div class="pref-row">
               <div>
@@ -191,7 +191,7 @@
             <div class="pref-row">
               <div>
                 <div class="pref-label">SSH username</div>
-                <div class="pref-note">Account Meshwatch will use once key auth is wired (phase 2)</div>
+                <div class="pref-note">Account Meshwatch will use for SSH once key auth is connected</div>
               </div>
               <input type="text" id="pref-ssh-user" value="admin" autocomplete="username" style="width:160px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
             </div>

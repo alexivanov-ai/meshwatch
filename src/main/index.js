@@ -19,6 +19,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: "#f3f2f2",
     title: "Meshwatch",
+    icon: path.join(__dirname, "..", "..", "build", process.platform === "win32" ? "icon.ico" : "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "..", "preload.js"),
       contextIsolation: true,
@@ -64,6 +65,8 @@ ipcMain.handle("devices:note", (_e, { mac, note }) => db.setNote(mac, note));
 ipcMain.handle("devices:rename", (_e, { mac, name }) => db.setNameOverride(mac, name));
 ipcMain.handle("devices:firmwareManual", (_e, { mac, version }) => db.setFirmwareManual(mac, version));
 ipcMain.handle("audit:run", async () => audit.run(db.listDevices()));
+ipcMain.handle("audit:dismiss", (_e, { key }) => audit.dismiss(key));
+ipcMain.handle("audit:restore", (_e, { key }) => audit.restore(key));
 ipcMain.handle("subnet:get", () => discovery.detectSubnet());
 ipcMain.handle("credentials:available", () => credentials.available());
 ipcMain.handle("pihole:state", () => db.getPiHoleState());

@@ -48,6 +48,12 @@ function init() {
     "CREATE TABLE IF NOT EXISTS settings (" +
     "  key TEXT PRIMARY KEY," +
     "  value TEXT" +
+    ");" +
+    // User-dismissed audit findings (rule:mac). Excluded from posture score
+    // until restored. Survives re-runs of the audit.
+    "CREATE TABLE IF NOT EXISTS finding_dismissals (" +
+    "  key TEXT PRIMARY KEY," +
+    "  dismissed_at INTEGER" +
     ");"
   );
 
@@ -275,7 +281,7 @@ function getPiHoleState() {
   };
 }
 
-function setPiHolePrefs({ sshPort, sshUser }) {
+function setPiHolePrefs({ sshPort, sshUser } = {}) {
   if (sshPort != null && sshPort !== "") {
     const n = Number(sshPort);
     if (!Number.isFinite(n) || n < 1 || n > 65535) {
@@ -283,10 +289,31 @@ function setPiHolePrefs({ sshPort, sshUser }) {
     }
     setSetting("pihole_ssh_port", String(Math.floor(n)));
   }
-  if (sshUser != null && String(sshUser).trim()) {
-    setSetting("pihole_ssh_user", String(sshUser).trim());
+  if (sshUser != null) {
+    const user = String(sshUser).trim();
+    if (!user) {
+      return { ok: false, reason: "SSH username cannot be empty" };
+    }
+    setSetting("pihole_ssh_user", user);
   }
   return { ok: true, state: getPiHoleState() };
+}
+
+function listDismissedFindingKeys() {
+  return db.prepare("SELECT key FROM finding_dismissals").all().map((r) => r.key);
+}
+
+function dismissFinding(key) {
+  db.prepare(
+    "INSERT INTO finding_dismissals (key, dismissed_at) VALUES (?, ?)" +
+    " ON CONFLICT(key) DO UPDATE SET dismissed_at = excluded.dismissed_at"
+  ).run(key, Date.now());
+  return { ok: true };
+}
+
+function restoreFinding(key) {
+  db.prepare("DELETE FROM finding_dismissals WHERE key = ?").run(key);
+  return { ok: true };
 }
 
 module.exports = {
@@ -294,5 +321,6 @@ module.exports = {
   saveCredential, listCredentialMeta, getCredential, removeCredential,
   getSetting, setSetting, getSettings,
   looksLikePiHole, notePiHoleDiscovery, getPiHoleState, setPiHolePrefs,
+  listDismissedFindingKeys, dismissFinding, restoreFinding,
   handle: () => db
 };

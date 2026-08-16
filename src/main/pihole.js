@@ -47,7 +47,7 @@ async function stats() {
   }
   return {
     available: false,
-    reason: "not implemented - phase 2",
+    reason: "Pi-hole API is not connected yet",
     host: t.host,
     sshPort: t.port,
     sshUser: t.user
@@ -65,7 +65,7 @@ async function exec(command) {
   }
   return {
     output: [
-      "pihole.js exec() is not implemented yet - phase 2",
+      "SSH commands are not connected yet",
       "Would connect: ssh " + t.user + "@" + t.host + " -p " + t.port,
       "Command: " + command
     ],

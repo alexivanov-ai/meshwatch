@@ -33,6 +33,10 @@
     "appId": "com.homemonitoring.meshwatch",
     "productName": "Meshwatch",
     "npmRebuild": false,
+    "directories": {
+      "buildResources": "build"
+    },
+    "icon": "build/icon.png",
     "asarUnpack": [
       "**/*.node"
     ],
@@ -42,6 +46,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ],
@@ -51,16 +56,20 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
-      "differentialPackage": true
+      "differentialPackage": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "publish": [
       {
         "provider": "github",
         "owner": "alexivanov-ai",
-        "repo": "home-monitoring"
+        "repo": "meshwatch"
       }
     ],
     "mac": {
+      "icon": "build/icon.png",
       "target": [
         "dmg"
       ],

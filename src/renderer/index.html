@@ -271,20 +271,25 @@
           <div class="panel-head"><h2>Pi-hole · SSH</h2></div>
           <p class="muted" id="pihole-prefs-note">SSH connection settings for the Pi-hole. Saved on this PC and used for shell commands.</p>
           <div class="prefs-list">
-            <div class="pref-row">
-              <div>
-                <div class="pref-label">SSH port</div>
-                <div class="pref-note">Default is 22. Set whatever port you expose (e.g. 2222) — Meshwatch will use it for shell commands.</div>
+            <form id="pihole-ssh-form">
+              <div class="pref-row">
+                <div>
+                  <div class="pref-label">SSH port</div>
+                  <div class="pref-note">Default is 22. Set whatever port you expose (e.g. 2222) — Meshwatch will use it for shell commands.</div>
+                </div>
+                <input type="number" id="pref-ssh-port" min="1" max="65535" step="1" value="22" style="width:120px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
               </div>
-              <input type="number" id="pref-ssh-port" min="1" max="65535" step="1" value="22" style="width:120px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
-            </div>
-            <div class="pref-row">
-              <div>
-                <div class="pref-label">SSH username</div>
-                <div class="pref-note">Account Meshwatch will use for SSH once key auth is connected</div>
+              <div class="pref-row">
+                <div>
+                  <div class="pref-label">SSH username</div>
+                  <div class="pref-note">Account Meshwatch will use for SSH once key auth is connected</div>
+                </div>
+                <div class="inline-form">
+                  <input type="text" id="pref-ssh-user" value="admin" autocomplete="username" style="width:160px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
+                  <button type="submit" class="primary-inline">Save</button>
+                </div>
               </div>
-              <input type="text" id="pref-ssh-user" value="admin" autocomplete="username" style="width:160px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
-            </div>
+            </form>
             <div class="pref-row">
               <div>
                 <div class="pref-label">Remembered host</div>

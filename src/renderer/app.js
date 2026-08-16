@@ -55,7 +55,37 @@ function applyTheme(pref) {
   return resolved;
 }
 
-function savePrefs() {
+let sshSaveToastAt = 0;
+
+async function saveSshPrefs(opts) {
+  const quiet = !!(opts && opts.quiet);
+  const portEl = $("#pref-ssh-port");
+  const userEl = $("#pref-ssh-user");
+  if (!portEl || !userEl) return { ok: false, reason: "SSH fields missing" };
+  const sshPort = portEl.value;
+  const sshUser = userEl.value;
+  try {
+    const r = await window.meshwatch.pihole.setPrefs({ sshPort, sshUser });
+    if (r && !r.ok) {
+      if (!quiet) toast(r.reason || "Could not save SSH settings");
+      return r;
+    }
+    if (r && r.state) state.pihole = r.state;
+    if (!quiet) {
+      const now = Date.now();
+      if (now - sshSaveToastAt > 800) {
+        sshSaveToastAt = now;
+        toast("SSH port and username saved");
+      }
+    }
+    return r || { ok: true };
+  } catch (e) {
+    if (!quiet) toast("Could not save SSH settings: " + ((e && e.message) || e));
+    return { ok: false, reason: (e && e.message) || String(e) };
+  }
+}
+
+async function savePrefs() {
   state.prefs.showOffline = $("#pref-offline").checked;
   state.prefs.autoScan = $("#pref-autoscan").checked;
   state.prefs.theme = $("#pref-theme").value || "system";
@@ -67,20 +97,12 @@ function savePrefs() {
   localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
   applyTheme(state.prefs.theme);
   window.meshwatch.prefs.set(state.prefs).catch(() => {});
-
-  const sshPort = $("#pref-ssh-port").value;
-  const sshUser = $("#pref-ssh-user").value;
-  window.meshwatch.pihole.setPrefs({ sshPort, sshUser }).then((r) => {
-    if (r && !r.ok) {
-      toast(r.reason || "Could not save SSH settings");
-      return;
-    }
-    if (r && r.state) state.pihole = r.state;
-    toast("Preferences saved");
-    loadPreferences();
-  }).catch((e) => {
-    toast("Could not save preferences: " + (e && e.message || e));
-  });
+  const ssh = await saveSshPrefs({ quiet: true });
+  if (ssh && ssh.ok === false) {
+    toast(ssh.reason || "Could not save SSH settings");
+    return;
+  }
+  toast("Preferences saved");
   renderInventory();
 }
 
@@ -1209,8 +1231,8 @@ async function loadPreferences() {
   // Always show SSH prefs — port/user are needed before or without a live
   // discovery (this LAN uses a non-default SSH port).
   panel.hidden = false;
-  $("#pref-ssh-port").value = (pi && pi.sshPort) || 22;
-  $("#pref-ssh-user").value = (pi && pi.sshUser) || "admin";
+  if (pi && pi.sshPort != null && pi.sshPort !== "") $("#pref-ssh-port").value = String(pi.sshPort);
+  if (pi && pi.sshUser) $("#pref-ssh-user").value = pi.sshUser;
   $("#pihole-host-value").textContent = pi && pi.ip
     ? ((pi.online ? "Online · " : "Last seen · ") + pi.ip + (pi.mac ? " · " + pi.mac : ""))
     : "Not remembered yet — run a scan";
@@ -1512,10 +1534,23 @@ $("#pref-theme").addEventListener("change", () => {
   applyTheme(state.prefs.theme);
 });
 
+const sshForm = $("#pihole-ssh-form");
+if (sshForm) {
+  sshForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await saveSshPrefs();
+  });
+}
+["pref-ssh-port", "pref-ssh-user"].forEach((id) => {
+  const el = $("#" + id);
+  if (el) el.addEventListener("change", () => { saveSshPrefs(); });
+});
+
 const apiForm = $("#pihole-api-form");
 if (apiForm) {
   apiForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+    await saveSshPrefs({ quiet: true });
     const password = $("#pref-pihole-api").value;
     const r = await window.meshwatch.pihole.setPassword(password);
     if (r && r.ok) {

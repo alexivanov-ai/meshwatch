@@ -565,6 +565,7 @@ tbody tr.selected td { background: var(--selected); }
 #pihole-out { max-height: 360px; min-height: 160px; }
 
 .prefs-list { max-width: 760px; }
+#pihole-ssh-form { display: contents; }
 .pref-row {
   display: grid;
   grid-template-columns: 1fr 220px;

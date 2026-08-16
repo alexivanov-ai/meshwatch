@@ -3,6 +3,8 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+const PREFS_KEY = "meshwatch.prefs";
+
 const state = {
   view: "overview",
   devices: [],
@@ -11,17 +13,107 @@ const state = {
   drift: [],
   subnet: null,
   selectedMac: null,
-  filter: "",
-  lastScanAt: null
+  query: "",
+  chip: "All",
+  lastScanAt: null,
+  scanning: false,
+  scanProgress: 0,
+  auditFilter: "all", // all | critical | high | medium | low
+  prefs: loadPrefs()
 };
 
 const statusEl = $("#status");
 const logEl = $("#log");
 const ctxEl = $("#ctx");
+let toastTimer = null;
+
+function loadPrefs() {
+  try {
+    return Object.assign(
+      { showOffline: true, autoScan: false },
+      JSON.parse(localStorage.getItem(PREFS_KEY) || "{}")
+    );
+  } catch (e) {
+    return { showOffline: true, autoScan: false };
+  }
+}
+
+function savePrefs() {
+  state.prefs.showOffline = $("#pref-offline").checked;
+  state.prefs.autoScan = $("#pref-autoscan").checked;
+  localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
+
+  const sshPort = $("#pref-ssh-port").value;
+  const sshUser = $("#pref-ssh-user").value;
+  if (!$("#pihole-prefs-panel").hidden) {
+    window.meshwatch.pihole.setPrefs({ sshPort, sshUser }).then((r) => {
+      if (r && !r.ok) toast(r.reason || "Could not save SSH settings");
+      else toast("Preferences saved");
+      updatePiholeNav();
+      loadPreferences();
+    });
+  } else {
+    toast("Preferences saved");
+  }
+  renderInventory();
+}
 
 function setStatus(text) {
   statusEl.textContent = text;
 }
+
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+}
+
+// Electron does not implement window.prompt — use an in-app modal.
+let modalResolver = null;
+
+function askText({ title, hint, value, multiline }) {
+  return new Promise((resolve) => {
+    if (modalResolver) modalResolver(null);
+    modalResolver = resolve;
+    $("#modal-title").textContent = title || "Edit";
+    const hintEl = $("#modal-hint");
+    hintEl.textContent = hint || "";
+    hintEl.hidden = !hint;
+    const input = $("#modal-input");
+    input.value = value == null ? "" : String(value);
+    input.rows = multiline === false ? 1 : 4;
+    $("#modal").hidden = false;
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  });
+}
+
+function closeModal(result) {
+  $("#modal").hidden = true;
+  const resolve = modalResolver;
+  modalResolver = null;
+  if (resolve) resolve(result);
+}
+
+$("#modal-cancel").addEventListener("click", () => closeModal(null));
+$("#modal-ok").addEventListener("click", () => closeModal($("#modal-input").value));
+$("#modal-input").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeModal(null);
+  }
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey || $("#modal-input").rows === 1)) {
+    e.preventDefault();
+    closeModal($("#modal-input").value);
+  }
+});
+$("#modal").addEventListener("click", (e) => {
+  if (e.target.id === "modal") closeModal(null);
+});
 
 function line(text, color) {
   const div = document.createElement("div");
@@ -29,6 +121,14 @@ function line(text, color) {
   if (color) div.style.color = color;
   logEl.appendChild(div);
   logEl.scrollTop = logEl.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function ipSort(a, b) {
@@ -51,25 +151,109 @@ function roleLabel(type) {
   return map[type] || type;
 }
 
+function isOnline(d) {
+  if (!d.last_seen && !state.lastScanAt) return true;
+  const ref = state.lastScanAt || Date.now();
+  const seen = d.last_seen || ref;
+  return ref - seen < 15 * 60 * 1000;
+}
+
+function deviceRisk(d) {
+  if (state.audit && state.audit.findings) {
+    const hits = state.audit.findings.filter((f) => f.mac === d.mac);
+    if (hits.some((f) => f.severity === "critical")) return "critical";
+    if (hits.some((f) => f.severity === "high")) return "high";
+    if (hits.some((f) => f.severity === "medium")) return "medium";
+    if (hits.some((f) => f.severity === "low")) return "low";
+  }
+  if (d.end_of_support || d.endOfSupport) return "critical";
+  if (d.estimated) return "medium";
+  return "ok";
+}
+
+function firmwareOf(d) {
+  return d.firmware_manual || d.firmware || "—";
+}
+
+function parentName(d) {
+  const mac = d.parent_mac || d.parentMac;
+  if (!mac) return d.type === "gateway" ? "Internet" : "—";
+  const p = state.devices.find((x) => x.mac === mac);
+  return p ? p.name : mac;
+}
+
+function childCount(mac) {
+  return state.devices.filter((d) => (d.parent_mac || d.parentMac) === mac).length;
+}
+
 function go(view) {
+  if (view === "pihole" && $("#nav-pihole").hidden) {
+    view = "overview";
+  }
   state.view = view;
   $$(".nav").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
   $$(".view").forEach((v) => v.classList.toggle("on", v.id === "view-" + view));
   if (view === "topology") renderTopology();
   if (view === "audit" && !state.audit) runAudit();
   if (view === "pihole") loadPihole();
+  if (view === "preferences") loadPreferences();
+  if (view === "discovery") updateScanChrome();
   hideCtx();
+}
+
+async function updatePiholeNav() {
+  let st = { discovered: false };
+  try {
+    st = await window.meshwatch.pihole.state();
+  } catch (e) { /* ignore */ }
+  state.pihole = st;
+  const nav = $("#nav-pihole");
+  nav.hidden = !st.discovered;
+  if (!st.discovered && state.view === "pihole") go("overview");
+  return st;
 }
 
 $$(".nav").forEach((btn) => btn.addEventListener("click", () => go(btn.dataset.view)));
 $$("[data-goto]").forEach((btn) => btn.addEventListener("click", () => go(btn.dataset.goto)));
 
+const CHIPS = ["All", "Online", "Gateway", "Switch", "Access point", "Client", "Estimated"];
+
+function renderChips() {
+  const row = $("#inventory-chips");
+  row.textContent = "";
+  for (const c of CHIPS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip" + (state.chip === c ? " on" : "");
+    b.textContent = c;
+    b.addEventListener("click", () => {
+      state.chip = c;
+      renderChips();
+      renderInventory();
+    });
+    row.appendChild(b);
+  }
+}
+
 function filteredDevices() {
-  const q = state.filter.trim().toLowerCase();
-  const list = state.devices.slice().sort(ipSort);
+  const q = state.query.trim().toLowerCase();
+  let list = state.devices.slice().sort(ipSort);
+
+  if (!state.prefs.showOffline) list = list.filter(isOnline);
+
+  if (state.chip === "Online") list = list.filter(isOnline);
+  else if (state.chip === "Gateway") list = list.filter((d) => d.type === "gateway");
+  else if (state.chip === "Switch") list = list.filter((d) => d.type === "switch");
+  else if (state.chip === "Access point") {
+    list = list.filter((d) => d.type === "access-point" || d.type === "extender");
+  } else if (state.chip === "Estimated") list = list.filter((d) => d.estimated);
+  else if (state.chip === "Client") {
+    list = list.filter((d) => !d.type || !["gateway", "switch", "access-point", "extender", "dns-dhcp", "legacy-router"].includes(d.type));
+  }
+
   if (!q) return list;
   return list.filter((d) => {
-    const hay = [d.name, d.ip, d.mac, d.vendor, d.model, d.type, (d.methods || []).join(" ")].join(" ").toLowerCase();
+    const hay = [d.name, d.ip, d.mac, d.vendor, d.model, d.type, firmwareOf(d), (d.methods || []).join(" ")].join(" ").toLowerCase();
     return hay.indexOf(q) !== -1;
   });
 }
@@ -85,6 +269,7 @@ function renderInventory() {
     const tr = document.createElement("tr");
     tr.dataset.mac = d.mac;
     if (d.mac === state.selectedMac) tr.classList.add("selected");
+
     const nameCell = document.createElement("td");
     nameCell.textContent = d.name || "Unidentified host";
     if (d.estimated) {
@@ -93,12 +278,38 @@ function renderInventory() {
       est.textContent = "estimate";
       nameCell.appendChild(est);
     }
+    if (d.nameOverride || d.name_override) {
+      const custom = document.createElement("span");
+      custom.className = "est";
+      custom.textContent = "renamed";
+      nameCell.appendChild(custom);
+    }
     tr.appendChild(nameCell);
-    for (const v of [d.ip, d.mac, d.vendor || "—", roleLabel(d.type), (d.methods || d.method || "—")]) {
+
+    const risk = deviceRisk(d);
+    const online = isOnline(d);
+    const cells = [
+      d.ip,
+      d.mac,
+      d.vendor || "—",
+      roleLabel(d.type),
+      firmwareOf(d),
+      null,
+      null
+    ];
+    for (let i = 0; i < 5; i++) {
       const td = document.createElement("td");
-      td.textContent = Array.isArray(v) ? v.join(", ") : (v == null || v === "" ? "—" : v);
+      td.textContent = cells[i] == null || cells[i] === "" ? "—" : cells[i];
       tr.appendChild(td);
     }
+    const riskTd = document.createElement("td");
+    riskTd.innerHTML = '<span class="risk ' + risk + '">' + risk + "</span>";
+    tr.appendChild(riskTd);
+
+    const stTd = document.createElement("td");
+    stTd.innerHTML = '<span class="status-dot' + (online ? "" : " off") + '"></span>' + (online ? "Online" : "Not seen");
+    tr.appendChild(stTd);
+
     tr.addEventListener("click", () => openDetail(d));
     tr.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -106,10 +317,11 @@ function renderInventory() {
     });
     tbody.appendChild(tr);
   }
+
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 6;
+    td.colSpan = 8;
     td.className = "empty";
     td.textContent = state.devices.length ? "No devices match this filter." : "No devices yet — run a scan.";
     tr.appendChild(td);
@@ -118,13 +330,14 @@ function renderInventory() {
 }
 
 function renderOverview() {
-  const online = state.devices.length;
+  const online = state.devices.filter(isOnline).length;
   const estimated = state.devices.filter((d) => d.estimated).length;
   const withWeb = state.devices.filter((d) => d.web_reachable || (d.web && d.web.reachable)).length;
   const gw = state.devices.find((d) => d.type === "gateway");
 
   $("#overview-stats").innerHTML = [
-    ["Devices", online],
+    ["Online", online],
+    ["Devices", state.devices.length],
     ["Estimated IDs", estimated],
     ["Web admin", withWeb],
     ["Gateway", gw ? gw.name : "—"]
@@ -181,12 +394,14 @@ function renderTopology() {
     for (const n of nodes) {
       const node = document.createElement("div");
       node.className = "topo-node" + (isRoot ? " root" : "");
+      const kids = (n.children && n.children.length) || childCount(n.mac);
       const card = document.createElement("div");
       card.className = "topo-card";
       card.innerHTML =
         "<strong>" + escapeHtml(n.name || "Device") + "</strong>" +
         "<span>" + escapeHtml((n.ip || "") + (n.type ? " · " + roleLabel(n.type) : "")) + "</span>" +
-        (n.estimated ? '<span class="est">link estimated</span>' : "");
+        '<div class="topo-meta"><span>' + kids + " downstream</span>" +
+        (n.estimated ? '<span class="est">link estimated</span>' : "") + "</div>";
       card.addEventListener("click", () => {
         const d = state.devices.find((x) => x.mac === n.mac);
         if (d) openDetail(d);
@@ -214,20 +429,61 @@ function renderAudit() {
     box.innerHTML = '<p class="empty">Press Run audit.</p>';
     return;
   }
+
+  const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
   const c = state.audit.counts || {};
-  stats.innerHTML = [
-    ["Score", state.audit.score],
-    ["Critical", c.critical || 0],
-    ["High", c.high || 0],
-    ["Medium", c.medium || 0],
-    ["Low", c.low || 0]
-  ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
+  const filter = state.auditFilter || "all";
+
+  const chips = [
+    { key: "all", label: "All", n: (state.audit.findings || []).length },
+    { key: "critical", label: "Critical", n: c.critical || 0 },
+    { key: "high", label: "High", n: c.high || 0 },
+    { key: "medium", label: "Medium", n: c.medium || 0 },
+    { key: "low", label: "Low", n: c.low || 0 }
+  ];
+
+  stats.innerHTML =
+    '<div class="stat score-stat"><div class="n">' + escapeHtml(String(state.audit.score)) + '</div><div class="l">Score</div></div>' +
+    chips.map((chip) =>
+      '<button type="button" class="stat filter-stat sev-stat-' + chip.key +
+      (filter === chip.key ? " on" : "") +
+      '" data-filter="' + chip.key + '" aria-pressed="' + (filter === chip.key ? "true" : "false") + '">' +
+      '<div class="n">' + escapeHtml(String(chip.n)) + '</div>' +
+      '<div class="l">' + escapeHtml(chip.label) + "</div></button>"
+    ).join("");
+
+  $$(".filter-stat", stats).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.filter;
+      state.auditFilter = state.auditFilter === key ? "all" : key;
+      renderAudit();
+    });
+  });
 
   $("#badge-audit").textContent = (c.critical || 0) || "";
 
-  for (const f of state.audit.findings || []) {
+  let findings = (state.audit.findings || []).slice();
+  findings.sort((a, b) => {
+    const sa = SEV_ORDER[a.severity] != null ? SEV_ORDER[a.severity] : 9;
+    const sb = SEV_ORDER[b.severity] != null ? SEV_ORDER[b.severity] : 9;
+    if (sa !== sb) return sa - sb;
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
+
+  if (filter !== "all") {
+    findings = findings.filter((f) => f.severity === filter);
+  }
+
+  if (!findings.length) {
+    box.innerHTML = '<p class="empty">No ' + (filter === "all" ? "" : filter + " ") + "findings.</p>";
+  }
+
+  for (const f of findings) {
     const div = document.createElement("div");
     div.className = "finding";
+    const actionBtn = f.action && /block internet/i.test(f.action)
+      ? '<button type="button" class="secondary finding-block" data-mac="' + escapeHtml(f.mac || "") + '">Block internet</button>'
+      : "";
     div.innerHTML =
       '<span class="sev ' + escapeHtml(f.severity) + '">' + escapeHtml(f.severity) + "</span>" +
       "<div><h3>" + escapeHtml(f.title) + "</h3>" +
@@ -235,18 +491,26 @@ function renderAudit() {
       '<span class="meta">' + escapeHtml([f.device, f.ip, f.reference].filter(Boolean).join(" · ")) + "</span>" +
       (f.action ? "<p><strong>Action:</strong> " + escapeHtml(f.action) + "</p>" : "") +
       (f.estimated ? '<span class="est">estimate</span>' : "") +
-      "</div>";
+      "</div>" + actionBtn;
     box.appendChild(div);
   }
+  $$(".finding-block", box).forEach((b) => {
+    b.addEventListener("click", () => {
+      toast("Internet blocking needs Pi-hole + router hooks — phase 4");
+    });
+  });
+  renderInventory();
+  renderOverview();
 }
 
 async function runAudit() {
   setStatus("Running audit…");
   try {
     state.audit = await window.meshwatch.getAudit();
+    state.auditFilter = "all";
     renderAudit();
-    renderOverview();
     setStatus("Audit complete — score " + state.audit.score);
+    toast("Audit score " + state.audit.score);
   } catch (e) {
     setStatus("Audit failed: " + e.message);
   }
@@ -254,11 +518,23 @@ async function runAudit() {
 
 async function loadPihole() {
   const stats = $("#pihole-stats");
+  const blocked = $("#pihole-blocked");
+  const host = $("#pihole-host");
   try {
+    const target = await window.meshwatch.pihole.target();
     const s = await window.meshwatch.pihole.stats();
     if (!s || s.available === false) {
-      stats.innerHTML = '<div class="stat"><div class="n">—</div><div class="l">API not connected yet</div></div>';
-      $("#pihole-out").textContent = (s && s.reason) || "Phase 2 will wire the Pi-hole API token and SSH key.";
+      stats.innerHTML = [
+        ["Queries today", "—"],
+        ["Blocked", "—"],
+        ["Blocked %", "—"],
+        ["SSH port", (target && target.port) || "—"]
+      ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
+      blocked.innerHTML = '<p class="empty">' + escapeHtml((s && s.reason) || "Phase 2 will wire the Pi-hole API token.") + "</p>";
+      const where = target && target.host
+        ? (target.user + "@" + target.host + " -p " + target.port)
+        : "host not set";
+      host.innerHTML = '<p class="empty">SSH target: <code>' + escapeHtml(where) + "</code>. Set the port in Preferences if you moved off 22.</p>";
       return;
     }
     stats.innerHTML = [
@@ -267,6 +543,14 @@ async function loadPihole() {
       ["Blocked %", s.blockedPercent],
       ["Blocklist", s.blocklistSize]
     ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n == null ? "—" : n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
+
+    const tops = s.topBlocked || [];
+    blocked.innerHTML = tops.length
+      ? tops.map((t) => '<div class="blocked-row"><span>' + escapeHtml(t.domain || t) + "</span><span>" + escapeHtml(String(t.hits || "")) + "</span></div>").join("")
+      : '<p class="empty">No blocked domains reported.</p>';
+    host.innerHTML = s.hostNote
+      ? "<p>" + escapeHtml(s.hostNote) + "</p>"
+      : '<p class="empty">Host metrics via SSH when connected.</p>';
   } catch (e) {
     stats.innerHTML = '<p class="empty">' + escapeHtml(e.message) + "</p>";
   }
@@ -279,6 +563,7 @@ async function runPiholeCmd(command) {
     const r = await window.meshwatch.pihole.exec(command);
     if (r.cancelled) {
       out.textContent = "Cancelled.";
+      toast("Command cancelled");
       return;
     }
     out.textContent = "$ " + command + "\n" + (r.output || []).join("\n");
@@ -287,24 +572,55 @@ async function runPiholeCmd(command) {
   }
 }
 
-function openDetail(d) {
+function updateScanChrome() {
+  const sub = state.subnet;
+  $("#scan-subnet-label").textContent = (sub && sub.cidr) || "Local /24";
+  if (state.scanning) {
+    $("#scan-found").textContent = "Scanning…";
+    $("#badge-discovery").textContent = "···";
+  } else if (state.devices.length) {
+    $("#scan-found").textContent = state.devices.length + " devices on file";
+    $("#badge-discovery").textContent = "";
+  } else {
+    $("#scan-found").textContent = "Idle";
+    $("#badge-discovery").textContent = "";
+  }
+  $("#scan-bar-fill").style.width = Math.min(100, state.scanProgress) + "%";
+}
+
+async function openDetail(d) {
   state.selectedMac = d.mac;
   renderInventory();
   const el = $("#detail");
   el.hidden = false;
+  const online = isOnline(d);
+  $("#detail-status").textContent = online ? "Online" : "Not seen";
   $("#detail-name").textContent = d.name || "Device";
+
   const webReach = d.web_reachable || (d.web && d.web.reachable);
   const webTitle = d.web_title || (d.web && d.web.title);
+  const fw = firmwareOf(d);
+  const fwLatest = d.firmware_latest || d.firmwareLatest;
+  const fwSource = d.firmware_source || d.firmwareSource || (d.firmware_manual ? "manual" : null);
+  const behind = fwLatest && fw && fw !== "—" && fw !== fwLatest;
+
   const rows = [
-    ["IP", d.ip],
+    ["Type", roleLabel(d.type)],
+    ["IPv4", d.ip],
     ["MAC", d.mac],
     ["Vendor", d.vendor],
     ["Model", d.model],
-    ["Type", roleLabel(d.type)],
+    ["Display name", d.name],
+    ["Discovered as", d.discoveredName || d.name],
+    ["Uplink", parentName(d)],
+    ["Connection", d.link || "—"],
+    ["Signal", d.signal || "—"],
+    ["Firmware", fw],
+    ["Latest available", fwLatest || "—"],
+    ["Source", fwSource || "—"],
     ["Control", d.control],
     ["Matched by", d.matched_by || d.matchedBy],
     ["Web title", webTitle],
-    ["Login page", webReach ? (d.web_login_form || (d.web && d.web.hasLoginForm) ? "yes" : "open") : "no"],
     ["Found via", Array.isArray(d.methods) ? d.methods.join(", ") : d.method],
     ["Note", d.note],
     ["First seen", d.first_seen ? new Date(d.first_seen).toLocaleString() : null],
@@ -313,7 +629,7 @@ function openDetail(d) {
   $("#detail-body").innerHTML =
     "<dl>" +
     rows
-      .filter(([, v]) => v != null && v !== "" && v !== "—")
+      .filter(([, v]) => v != null && v !== "")
       .map(([k, v]) => "<dt>" + escapeHtml(k) + "</dt><dd>" + escapeHtml(String(v)) + "</dd>")
       .join("") +
     "</dl>" +
@@ -321,24 +637,152 @@ function openDetail(d) {
 
   const actions = $("#detail-actions");
   actions.textContent = "";
+
+  const primary = document.createElement("button");
+  primary.type = "button";
+  primary.className = "primary-inline";
+  if (behind) {
+    primary.textContent = "Update firmware to " + fwLatest;
+    primary.addEventListener("click", () => toast("Firmware update needs TP-Link control — phase 3"));
+  } else if (d.estimated || fw === "—") {
+    primary.textContent = "Record firmware manually";
+    primary.addEventListener("click", async () => {
+      const v = await askText({
+        title: "Record firmware",
+        hint: "Type the version from the device label or admin page.",
+        value: d.firmware_manual || "",
+        multiline: false
+      });
+      if (v == null) return;
+      await window.meshwatch.setFirmwareManual(d.mac, v.trim());
+      d.firmware_manual = v.trim();
+      d.firmware = v.trim();
+      d.firmware_source = "manual";
+      toast("Recorded firmware " + v.trim());
+      openDetail(d);
+      renderInventory();
+    });
+  } else {
+    primary.textContent = "Re-probe this device";
+    primary.addEventListener("click", () => {
+      go("discovery");
+      startScan();
+    });
+  }
+  actions.appendChild(primary);
+  const note = document.createElement("div");
+  note.className = "action-note";
+  note.textContent = behind
+    ? "Fetches from the vendor catalogue once phase 3 control is live."
+    : (d.estimated || fw === "—" ? "No API to query. Type the version from the device label or admin page." : "Runs another full subnet sweep.");
+  actions.appendChild(note);
+
+  const renameBtn = document.createElement("button");
+  renameBtn.type = "button";
+  renameBtn.textContent = "Rename device";
+  renameBtn.addEventListener("click", () => renameDevicePrompt(d));
+  actions.appendChild(renameBtn);
+
+  if (d.nameOverride || d.name_override) {
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.textContent = "Clear custom name";
+    clear.addEventListener("click", async () => {
+      await window.meshwatch.renameDevice(d.mac, "");
+      d.nameOverride = null;
+      d.name_override = null;
+      d.name = d.discoveredName || d.name;
+      toast("Using discovered name again");
+      await refreshDevice(d.mac);
+    });
+    actions.appendChild(clear);
+  }
+
   if (webReach && d.ip) {
     const open = document.createElement("button");
     open.type = "button";
     open.textContent = "Open admin page";
-    open.addEventListener("click", () => window.meshwatch.openExternal("http://" + d.ip + "/"));
+    open.addEventListener("click", () => openInAppBrowser("http://" + d.ip + "/"));
     actions.appendChild(open);
   }
+
+  const block = document.createElement("button");
+  block.type = "button";
+  block.textContent = "Block internet access";
+  block.addEventListener("click", () => toast("Blocking via Pi-hole / gateway — phase 4"));
+  actions.appendChild(block);
+
   const noteBtn = document.createElement("button");
   noteBtn.type = "button";
   noteBtn.textContent = "Add note";
   noteBtn.addEventListener("click", async () => {
-    const note = window.prompt("Note for " + (d.name || d.ip), d.note || "");
-    if (note == null) return;
-    await window.meshwatch.setNote(d.mac, note);
-    d.note = note;
-    openDetail(d);
+    const n = await askText({
+      title: "Note for " + (d.name || d.ip || "device"),
+      hint: "Saved on this PC only. Leave empty to clear.",
+      value: d.note || "",
+      multiline: true
+    });
+    if (n == null) return;
+    await window.meshwatch.setNote(d.mac, n);
+    d.note = n;
+    toast(n.trim() ? "Note saved" : "Note cleared");
+    await refreshDevice(d.mac);
   });
   actions.appendChild(noteBtn);
+
+  if (d.control === "tplink") {
+    const sec = document.createElement("div");
+    sec.className = "detail-section";
+    sec.textContent = "TP-Link controls";
+    actions.appendChild(sec);
+    const tpActions = [
+      ["Reboot", "reboot"],
+      ["Firmware update", "firmwareUpdate"],
+      ["SSID + password", "ssid"],
+      ["Band steering", "bandSteering"],
+      ["Client list", "clientList"],
+      ["Port forwarding", "portForwarding"],
+      ["WAN speed test", "speedTest"],
+      ["LED schedule", "led"],
+      ["Backhaul health", "backhaul"]
+    ];
+    for (const [label, action] of tpActions) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.addEventListener("click", async () => {
+        const r = await window.meshwatch.tplink.action(d.ip, action, {});
+        if (r && r.cancelled) return toast("Cancelled");
+        if (r && r.adminPage && (!r.ok)) {
+          toast((r.reason || "Not available") + " — opening admin in Meshwatch");
+          openInAppBrowser(r.adminPage);
+        } else if (r && r.ok) toast(label + " ok");
+        else toast((r && r.reason) || "Not implemented — phase 3");
+      });
+      actions.appendChild(b);
+    }
+  }
+
+  if (d.type === "dns-dhcp" || d.control === "ssh") {
+    const sec = document.createElement("div");
+    sec.className = "detail-section";
+    sec.textContent = "Pi-hole / SSH";
+    actions.appendChild(sec);
+    for (const [label, cmd] of [
+      ["Open Pi-hole panel", null],
+      ["pihole status", "pihole status"],
+      ["Update gravity", "pihole -g"]
+    ]) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.addEventListener("click", () => {
+        go("pihole");
+        if (cmd) runPiholeCmd(cmd);
+      });
+      actions.appendChild(b);
+    }
+  }
 }
 
 function closeDetail() {
@@ -352,16 +796,38 @@ function openCtx(x, y, d) {
   ctxEl.textContent = "";
   const items = [
     ["Open details", () => openDetail(d)],
+    ["Rename…", () => renameDevicePrompt(d)],
     d.ip && (d.web_reachable || (d.web && d.web.reachable))
-      ? ["Open admin page", () => window.meshwatch.openExternal("http://" + d.ip + "/")]
+      ? ["Open admin page", () => openInAppBrowser("http://" + d.ip + "/")]
       : null,
-    ["Copy IP", () => navigator.clipboard.writeText(d.ip || "")],
-    ["Copy MAC", () => navigator.clipboard.writeText(d.mac || "")],
+    ["Copy IP", async () => { await navigator.clipboard.writeText(d.ip || ""); toast("IP copied"); }],
+    ["Copy MAC", async () => { await navigator.clipboard.writeText(d.mac || ""); toast("MAC copied"); }],
+    ["Record firmware…", async () => {
+      const v = await askText({
+        title: "Record firmware",
+        hint: "Version from the device itself.",
+        value: d.firmware_manual || d.firmware || "",
+        multiline: false
+      });
+      if (v == null) return;
+      await window.meshwatch.setFirmwareManual(d.mac, v.trim());
+      d.firmware_manual = v.trim();
+      toast("Firmware recorded");
+      renderInventory();
+    }],
+    ["Block internet…", () => toast("Internet blocking — phase 4")],
     ["Add note…", async () => {
-      const note = window.prompt("Note for " + (d.name || d.ip), d.note || "");
+      const note = await askText({
+        title: "Note for " + (d.name || d.ip || "device"),
+        hint: "Saved on this PC only. Leave empty to clear.",
+        value: d.note || "",
+        multiline: true
+      });
       if (note == null) return;
       await window.meshwatch.setNote(d.mac, note);
       d.note = note;
+      toast(note.trim() ? "Note saved" : "Note cleared");
+      await refreshDevice(d.mac);
     }]
   ].filter(Boolean);
 
@@ -369,28 +835,129 @@ function openCtx(x, y, d) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = label;
+    if (/Block/.test(label)) b.className = "danger";
     b.addEventListener("click", () => {
       hideCtx();
       fn();
     });
     ctxEl.appendChild(b);
   }
-  const pad = 8;
-  ctxEl.style.left = Math.min(x, window.innerWidth - 220) + "px";
-  ctxEl.style.top = Math.min(y, window.innerHeight - 160) + "px";
-  void pad;
+  ctxEl.style.left = Math.min(x, window.innerWidth - 240) + "px";
+  ctxEl.style.top = Math.min(y, window.innerHeight - 220) + "px";
 }
 
 function hideCtx() {
   ctxEl.hidden = true;
 }
 
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+async function renameDevicePrompt(d) {
+  const current = d.nameOverride || d.name_override || d.name || "";
+  const next = await askText({
+    title: "Rename device",
+    hint: "Leave empty and Save to clear a custom name and use discovery again.",
+    value: current,
+    multiline: false
+  });
+  if (next == null) return;
+  const r = await window.meshwatch.renameDevice(d.mac, next);
+  if (r && !r.ok) {
+    toast(r.reason || "Rename failed");
+    return;
+  }
+  toast(next.trim() ? "Renamed to " + next.trim() : "Custom name cleared");
+  await refreshDevice(d.mac);
+}
+
+async function refreshDevice(mac) {
+  await loadDevices();
+  const updated = state.devices.find((x) => x.mac === mac);
+  if (updated && state.selectedMac === mac) openDetail(updated);
+  renderTopology();
+}
+
+function exportCsv() {
+  const rows = [["Name", "IP", "MAC", "Vendor", "Type", "Firmware", "Risk", "Status", "Methods"]];
+  for (const d of state.devices.slice().sort(ipSort)) {
+    rows.push([
+      d.name, d.ip, d.mac, d.vendor, d.type, firmwareOf(d), deviceRisk(d),
+      isOnline(d) ? "online" : "not seen",
+      (d.methods || []).join("+")
+    ]);
+  }
+  const csv = rows.map((r) => r.map((c) => {
+    const s = String(c == null ? "" : c);
+    return /["',\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "meshwatch-inventory.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Exported " + state.devices.length + " devices");
+}
+
+async function loadPreferences() {
+  $("#pref-offline").checked = !!state.prefs.showOffline;
+  $("#pref-autoscan").checked = !!state.prefs.autoScan;
+  const avail = await window.meshwatch.credentials.available();
+  $("#cred-status").textContent = avail
+    ? "OS-backed encryption available. Passwords never leave this machine."
+    : "OS encryption unavailable — credential vault disabled.";
+  $("#cred-form").style.display = avail ? "" : "none";
+
+  const pi = await updatePiholeNav();
+  const panel = $("#pihole-prefs-panel");
+  panel.hidden = !pi.discovered;
+  if (pi.discovered) {
+    $("#pref-ssh-port").value = pi.sshPort || 22;
+    $("#pref-ssh-user").value = pi.sshUser || "admin";
+    $("#pihole-host-value").textContent = pi.ip
+      ? ((pi.online ? "Online · " : "Last seen · ") + pi.ip + (pi.mac ? " · " + pi.mac : ""))
+      : "MAC/IP remembered after the next scan";
+    $("#pihole-host-note").textContent = pi.remembered
+      ? "Kept after the first discovery so the Pi-hole panel stays available offline."
+      : "Detected on this network.";
+  }
+
+  const sel = $("#cred-mac");
+  sel.textContent = "";
+  const opt0 = document.createElement("option");
+  opt0.value = "";
+  opt0.textContent = "Select device…";
+  sel.appendChild(opt0);
+  for (const d of state.devices.slice().sort(ipSort)) {
+    const o = document.createElement("option");
+    o.value = d.mac;
+    o.textContent = (d.name || d.ip) + " — " + d.mac;
+    sel.appendChild(o);
+  }
+
+  const list = await window.meshwatch.credentials.list();
+  const box = $("#cred-list");
+  box.textContent = "";
+  if (!list.length) {
+    box.innerHTML = '<p class="empty">No saved device logins yet.</p>';
+    return;
+  }
+  for (const c of list) {
+    const d = state.devices.find((x) => x.mac === c.mac);
+    const row = document.createElement("div");
+    row.className = "cred-item";
+    row.innerHTML =
+      "<div><strong>" + escapeHtml(c.label || (d && d.name) || c.mac) + "</strong>" +
+      "<div class=\"muted\">" + escapeHtml((c.username || "(no user)") + " · " + c.mac) + "</div></div>";
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.textContent = "Remove";
+    rm.addEventListener("click", async () => {
+      await window.meshwatch.credentials.remove(c.mac);
+      toast("Credential removed");
+      loadPreferences();
+    });
+    row.appendChild(rm);
+    box.appendChild(row);
+  }
 }
 
 async function refreshHeader() {
@@ -401,34 +968,28 @@ async function refreshHeader() {
     if (sub.localIp) parts.push("this PC " + sub.localIp);
     if (sub.iface) parts.push(sub.iface);
     $("#header-sub").textContent = parts.join(" · ");
+    updateScanChrome();
   } catch (e) {
     $("#header-sub").textContent = "Local network";
   }
   try {
-    const v = await window.meshwatch.version();
-    $("#version").textContent = "v" + v;
+    $("#version").textContent = "v" + (await window.meshwatch.version());
   } catch (e) { /* ignore */ }
 }
 
 async function loadDevices() {
   state.devices = (await window.meshwatch.getDevices()) || [];
-  // Normalize methods from last sighting if missing on row
   for (const d of state.devices) {
     if (!d.methods && d.method) d.methods = String(d.method).split("+");
   }
-  try {
-    state.topology = (await window.meshwatch.getTopology()) || [];
-  } catch (e) {
-    state.topology = [];
-  }
-  try {
-    state.drift = (await window.meshwatch.getDrift()) || [];
-  } catch (e) {
-    state.drift = [];
-  }
+  try { state.topology = (await window.meshwatch.getTopology()) || []; } catch (e) { state.topology = []; }
+  try { state.drift = (await window.meshwatch.getDrift()) || []; } catch (e) { state.drift = []; }
+  renderChips();
   renderInventory();
   renderOverview();
   renderTopology();
+  updateScanChrome();
+  await updatePiholeNav();
   if (state.devices.length) {
     setStatus(state.devices.length + " devices from last scan");
     $("#last-scan").textContent = state.devices[0].last_seen
@@ -437,29 +998,19 @@ async function loadDevices() {
   }
 }
 
-window.meshwatch.onScanProgress(({ stage, detail }) => {
-  if (stage === "ping") {
-    setStatus(
-      "Probing " + detail.probed + " of " + detail.total +
-      " on " + (detail.subnet || "LAN") + " — " + detail.found + " responded"
-    );
-    return;
-  }
-  if (stage === "start") {
-    line("Scanning " + (detail.subnet || "") + (detail.localIp ? " from " + detail.localIp : ""), "#d7d3d3");
-    if (detail.subnet) $("#header-sub").textContent = detail.subnet + (detail.localIp ? " · this PC " + detail.localIp : "");
-    return;
-  }
-  line("[" + stage + "] " + (detail.note || JSON.stringify(detail)));
-});
-
-$("#scan").addEventListener("click", async () => {
+async function startScan() {
   const button = $("#scan");
   button.disabled = true;
+  $("#rescan").disabled = true;
   logEl.textContent = "";
   closeDetail();
-  go("overview");
+  state.scanning = true;
+  state.scanProgress = 0;
+  updateScanChrome();
+  go("discovery");
   setStatus("Scanning…");
+  $("#scan").textContent = "Scanning…";
+
   try {
     const devices = await window.meshwatch.scan();
     state.devices = devices || [];
@@ -467,27 +1018,95 @@ $("#scan").addEventListener("click", async () => {
     state.topology = (await window.meshwatch.getTopology()) || [];
     state.drift = (await window.meshwatch.getDrift()) || [];
     state.audit = null;
+    state.scanProgress = 100;
+    renderChips();
     renderInventory();
     renderOverview();
     renderTopology();
     $("#last-scan").textContent = "Last sweep just now";
     setStatus(state.devices.length + " devices found");
     line("Done — " + state.devices.length + " devices", "#d7d3d3");
+    $("#scan-meta").innerHTML =
+      "<span>" + state.devices.length + " responded</span>" +
+      "<span>leases cross-checked against Pi-hole</span>" +
+      "<span>" + escapeHtml((state.subnet && state.subnet.cidr) || "") + "</span>";
+    toast(state.devices.length + " devices found");
+    await updatePiholeNav();
   } catch (e) {
     line("Scan failed: " + e.message, "#ff563c");
     setStatus("Scan failed");
+    toast("Scan failed");
   } finally {
+    state.scanning = false;
+    updateScanChrome();
     button.disabled = false;
+    $("#rescan").disabled = false;
+    $("#scan").textContent = "Scan network now";
   }
+}
+
+window.meshwatch.onScanProgress(({ stage, detail }) => {
+  if (stage === "ping") {
+    state.scanProgress = Math.round((detail.probed / detail.total) * 85);
+    updateScanChrome();
+    setStatus(
+      "Probing " + detail.probed + " of " + detail.total +
+      " on " + (detail.subnet || "LAN") + " — " + detail.found + " responded"
+    );
+    $("#scan-found").textContent = detail.found + " responded";
+    $("#scan-meta").innerHTML =
+      "<span>" + detail.probed + " / " + detail.total + " probed</span>" +
+      "<span>" + detail.found + " responded</span>";
+    return;
+  }
+  if (stage === "start") {
+    line("Scanning " + (detail.subnet || "") + (detail.localIp ? " from " + detail.localIp : ""), "#d7d3d3");
+    if (detail.subnet) {
+      state.subnet = Object.assign({}, state.subnet || {}, { cidr: detail.subnet, localIp: detail.localIp, iface: detail.iface });
+      $("#header-sub").textContent = detail.subnet + (detail.localIp ? " · this PC " + detail.localIp : "");
+    }
+    return;
+  }
+  if (stage === "done") state.scanProgress = 100;
+  else if (stage === "webprobe") state.scanProgress = 90;
+  else if (stage === "snmp") state.scanProgress = 95;
+  else state.scanProgress = Math.min(88, state.scanProgress + 2);
+  updateScanChrome();
+  line("[" + stage + "] " + (detail.note || JSON.stringify(detail)));
 });
 
+$("#scan").addEventListener("click", () => startScan());
+$("#rescan").addEventListener("click", () => startScan());
 $("#inventory-filter").addEventListener("input", (e) => {
-  state.filter = e.target.value;
+  state.query = e.target.value;
   renderInventory();
 });
-
 $("#run-audit").addEventListener("click", () => runAudit());
 $("#detail-close").addEventListener("click", () => closeDetail());
+$("#save-prefs").addEventListener("click", () => savePrefs());
+$("#export-csv").addEventListener("click", () => exportCsv());
+$("#pref-update").addEventListener("click", async () => {
+  const r = await window.meshwatch.checkForUpdate();
+  toast((r && r.message) || (r && r.state) || "Update check started");
+});
+$("#cred-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const mac = $("#cred-mac").value;
+  const password = $("#cred-pass").value;
+  if (!mac || !password) return;
+  const r = await window.meshwatch.credentials.save(
+    mac,
+    $("#cred-label").value,
+    $("#cred-user").value,
+    password
+  );
+  if (r && r.ok) {
+    toast("Credential saved");
+    $("#cred-pass").value = "";
+    loadPreferences();
+  } else toast((r && r.reason) || "Save failed");
+});
+
 document.addEventListener("click", (e) => {
   if (!ctxEl.hidden && !ctxEl.contains(e.target)) hideCtx();
 });
@@ -512,5 +1131,76 @@ if (window.meshwatch.onUpdateStatus) {
   });
 }
 
+function reportBrowserBounds() {
+  const frame = $("#browser-frame");
+  if (!frame || $("#browser").hidden) return;
+  const r = frame.getBoundingClientRect();
+  window.meshwatch.browser.setBounds({
+    x: r.left,
+    y: r.top,
+    width: r.width,
+    height: r.height
+  });
+}
+
+async function openInAppBrowser(url) {
+  const r = await window.meshwatch.browser.open(url);
+  if (!r || !r.ok) {
+    toast((r && r.reason) || "Could not open page");
+    return;
+  }
+  $("#browser").hidden = false;
+  $("#browser-url").value = url;
+  $("#browser-title").textContent = "";
+  hideCtx();
+  closeDetail();
+  requestAnimationFrame(() => reportBrowserBounds());
+}
+
+function closeInAppBrowser() {
+  window.meshwatch.browser.close();
+  $("#browser").hidden = true;
+}
+
+$("#browser-back").addEventListener("click", () => window.meshwatch.browser.back());
+$("#browser-forward").addEventListener("click", () => window.meshwatch.browser.forward());
+$("#browser-reload").addEventListener("click", () => window.meshwatch.browser.reload());
+$("#browser-close").addEventListener("click", () => closeInAppBrowser());
+window.addEventListener("resize", () => reportBrowserBounds());
+
+window.meshwatch.browser.on("opened", ({ url }) => {
+  $("#browser").hidden = false;
+  $("#browser-url").value = url || "";
+  reportBrowserBounds();
+});
+window.meshwatch.browser.on("closed", () => {
+  $("#browser").hidden = true;
+});
+window.meshwatch.browser.on("navigated", ({ url }) => {
+  $("#browser-url").value = url || "";
+});
+window.meshwatch.browser.on("title", ({ title }) => {
+  $("#browser-title").textContent = title || "";
+});
+window.meshwatch.browser.on("loading", ({ loading }) => {
+  $("#browser-reload").textContent = loading ? "…" : "↻";
+});
+window.meshwatch.browser.on("error", ({ desc }) => {
+  toast("Page failed: " + (desc || "load error"));
+});
+window.meshwatch.browser.on("needBounds", () => reportBrowserBounds());
+
+$("#pref-offline").checked = !!state.prefs.showOffline;
+$("#pref-autoscan").checked = !!state.prefs.autoScan;
+
 refreshHeader();
-loadDevices();
+loadDevices().then(() => {
+  if (state.prefs.autoScan) startScan();
+});
+window.meshwatch.versions().then((v) => {
+  if (v && v.chrome) {
+    const note = $("#cred-status");
+    // Preferences shows vault status; Chromium version goes in header sub on demand via version badge title
+    $("#version").title = "Chromium " + v.chrome + " · Electron " + v.electron + " · Node " + v.node;
+  }
+}).catch(() => {});

@@ -42,6 +42,12 @@ function init() {
     "  mac TEXT PRIMARY KEY," +
     "  label TEXT, username TEXT, password_enc BLOB," +
     "  updated_at INTEGER" +
+    ");" +
+    // App preferences that must survive reinstalls of the UI and travel with
+    // the OS user profile (e.g. "we once saw a Pi-hole on this LAN").
+    "CREATE TABLE IF NOT EXISTS settings (" +
+    "  key TEXT PRIMARY KEY," +
+    "  value TEXT" +
     ");"
   );
 
@@ -50,7 +56,8 @@ function init() {
   const existingColumns = new Set(db.prepare("PRAGMA table_info(devices)").all().map(c => c.name));
   const newColumns = {
     model: "TEXT", end_of_support: "TEXT", matched_by: "TEXT",
-    web_reachable: "INTEGER DEFAULT 0", web_title: "TEXT", web_server: "TEXT", web_login_form: "INTEGER DEFAULT 0"
+    web_reachable: "INTEGER DEFAULT 0", web_title: "TEXT", web_server: "TEXT", web_login_form: "INTEGER DEFAULT 0",
+    name_override: "TEXT"
   };
   for (const [name, type] of Object.entries(newColumns)) {
     if (!existingColumns.has(name)) db.exec("ALTER TABLE devices ADD COLUMN " + name + " " + type);
@@ -60,6 +67,11 @@ function init() {
 }
 
 function recordScan(devices) {
+  // Drop non-host addresses left from older builds (broadcast .255, network .0).
+  db.prepare(
+    "DELETE FROM devices WHERE ip GLOB '*.0' OR ip GLOB '*.255' OR ip = '255.255.255.255' OR ip = '0.0.0.0'"
+  ).run();
+
   const now = Date.now();
   const upsert = db.prepare(
     "INSERT INTO devices (mac, ip, name, vendor, model, type, parent_mac, parent_estimated, link, signal," +
@@ -69,7 +81,9 @@ function recordScan(devices) {
     " @firmware, @firmware_latest, @firmware_source, @end_of_support, @control, @estimated, @matched_by," +
     " @web_reachable, @web_title, @web_server, @web_login_form, @now, @now)" +
     " ON CONFLICT(mac) DO UPDATE SET" +
-    " ip=excluded.ip, name=COALESCE(excluded.name, devices.name)," +
+    " ip=excluded.ip," +
+    // Keep the scanned/discovered name in `name`, but never wipe a user rename.
+    " name=excluded.name," +
     " vendor=COALESCE(excluded.vendor, devices.vendor), model=excluded.model, type=COALESCE(excluded.type, devices.type)," +
     " parent_mac=excluded.parent_mac, parent_estimated=excluded.parent_estimated," +
     " link=excluded.link, signal=excluded.signal," +
@@ -103,21 +117,55 @@ function recordScan(devices) {
     }
   });
   tx(devices);
+  notePiHoleDiscovery(devices);
   return devices.length;
 }
 
 function listDevices() {
   const devices = db.prepare("SELECT * FROM devices ORDER BY last_seen DESC").all();
   const lastMethod = db.prepare("SELECT method FROM sightings WHERE mac = ? ORDER BY seen_at DESC LIMIT 1");
-  return devices.map((d) => {
+  return devices
+    .filter((d) => {
+      if (!d.ip) return true;
+      const last = Number(String(d.ip).split(".").pop());
+      // Inventory is hosts only — never network (.0) or broadcast (.255).
+      return last >= 1 && last <= 254;
+    })
+    .map((d) => {
     const s = lastMethod.get(d.mac);
     const methods = s && s.method ? String(s.method).split("+").filter(Boolean) : [];
-    return Object.assign({}, d, { methods });
+    const discoveredName = d.name;
+    const nameOverride = d.name_override || null;
+    return Object.assign({}, d, {
+      methods,
+      discoveredName,
+      nameOverride,
+      // What the UI shows — user rename wins over discovery.
+      name: nameOverride || discoveredName
+    });
   });
 }
 
 function setNote(mac, note) {
   db.prepare("UPDATE devices SET note = ? WHERE mac = ?").run(note, mac);
+  return { ok: true };
+}
+
+function setNameOverride(mac, name) {
+  const trimmed = name == null ? "" : String(name).trim();
+  if (!trimmed) {
+    db.prepare("UPDATE devices SET name_override = NULL WHERE mac = ?").run(mac);
+    return { ok: true, nameOverride: null };
+  }
+  if (trimmed.length > 120) return { ok: false, reason: "Name is too long (max 120 characters)" };
+  db.prepare("UPDATE devices SET name_override = ? WHERE mac = ?").run(trimmed, mac);
+  return { ok: true, nameOverride: trimmed };
+}
+
+function setFirmwareManual(mac, version) {
+  db.prepare(
+    "UPDATE devices SET firmware_manual = ?, firmware = COALESCE(?, firmware), firmware_source = ? WHERE mac = ?"
+  ).run(version || null, version || null, version ? "manual" : null, mac);
   return { ok: true };
 }
 
@@ -148,8 +196,103 @@ function removeCredential(mac) {
   return { ok: true };
 }
 
+function getSetting(key, fallback = null) {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+  return row ? row.value : fallback;
+}
+
+function setSetting(key, value) {
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES (?, ?)" +
+    " ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).run(key, value == null ? null : String(value));
+  return { ok: true };
+}
+
+function getSettings(keys) {
+  const out = {};
+  for (const key of keys) out[key] = getSetting(key, null);
+  return out;
+}
+
+function looksLikePiHole(d) {
+  if (!d) return false;
+  if (d.type === "dns-dhcp" || d.control === "ssh") return true;
+  const vendor = String(d.vendor || "").toLowerCase();
+  const name = String(d.name || "").toLowerCase();
+  const title = String(d.web_title || (d.web && d.web.title) || "").toLowerCase();
+  const model = String(d.model || "").toLowerCase();
+  if (vendor.indexOf("raspberry") !== -1) return true;
+  if (/pi-?hole/.test(name) || /pi-?hole/.test(title)) return true;
+  if (/^pi\s*[345]/.test(name) || model.indexOf("pi 5") !== -1 || model.indexOf("pi 4") !== -1) return true;
+  return false;
+}
+
+// Remember that this machine's LAN once had a Pi / Pi-hole so the sidebar
+// entry can stay available even when the Pi is offline on a later scan.
+function notePiHoleDiscovery(devices) {
+  const hit = (devices || []).find(looksLikePiHole);
+  if (!hit) return getPiHoleState();
+
+  setSetting("pihole_discovered", "1");
+  if (hit.mac) setSetting("pihole_mac", hit.mac);
+  if (hit.ip) setSetting("pihole_ip", hit.ip);
+  return getPiHoleState();
+}
+
+function getPiHoleState() {
+  const discovered = getSetting("pihole_discovered") === "1";
+  const mac = getSetting("pihole_mac");
+  const ip = getSetting("pihole_ip");
+  const sshPortRaw = getSetting("pihole_ssh_port");
+  const sshUser = getSetting("pihole_ssh_user") || "admin";
+  let sshPort = Number(sshPortRaw);
+  if (!Number.isFinite(sshPort) || sshPort < 1 || sshPort > 65535) {
+    // No user preference yet — standard SSH. Custom ports (2222, etc.) are
+    // set in Preferences; never assume one for every install.
+    sshPort = 22;
+  }
+
+  // Live match from the last scan, if still present.
+  const live = listDevices().find((d) =>
+    (mac && d.mac === mac) || looksLikePiHole(d)
+  ) || null;
+
+  if (live) {
+    setSetting("pihole_discovered", "1");
+    if (live.mac) setSetting("pihole_mac", live.mac);
+    if (live.ip) setSetting("pihole_ip", live.ip);
+  }
+
+  return {
+    discovered: discovered || !!live,
+    remembered: getSetting("pihole_discovered") === "1",
+    mac: (live && live.mac) || mac || null,
+    ip: (live && live.ip) || ip || null,
+    sshPort: sshPort,
+    sshUser,
+    online: !!live
+  };
+}
+
+function setPiHolePrefs({ sshPort, sshUser }) {
+  if (sshPort != null && sshPort !== "") {
+    const n = Number(sshPort);
+    if (!Number.isFinite(n) || n < 1 || n > 65535) {
+      return { ok: false, reason: "SSH port must be between 1 and 65535" };
+    }
+    setSetting("pihole_ssh_port", String(Math.floor(n)));
+  }
+  if (sshUser != null && String(sshUser).trim()) {
+    setSetting("pihole_ssh_user", String(sshUser).trim());
+  }
+  return { ok: true, state: getPiHoleState() };
+}
+
 module.exports = {
-  init, recordScan, listDevices, setNote,
+  init, recordScan, listDevices, setNote, setNameOverride, setFirmwareManual,
   saveCredential, listCredentialMeta, getCredential, removeCredential,
+  getSetting, setSetting, getSettings,
+  looksLikePiHole, notePiHoleDiscovery, getPiHoleState, setPiHolePrefs,
   handle: () => db
 };

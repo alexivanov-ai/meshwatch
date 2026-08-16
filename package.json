@@ -13,12 +13,13 @@
     "start": "electron .",
     "start:debug": "electron . --enable-logging",
     "test:discovery": "node scripts/test-discovery.js",
+    "sync:electron": "node scripts/sync-electron-abi.js",
     "build:win": "electron-builder --win nsis",
     "build:mac": "electron-builder --mac dmg",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "node scripts/sync-electron-abi.js && electron-builder install-app-deps"
   },
   "devDependencies": {
-    "electron": "^32.0.0",
+    "electron": "^43.4.0",
     "electron-builder": "^25.0.5"
   },
   "dependencies": {

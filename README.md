@@ -88,3 +88,14 @@ Installed builds also check GitHub Releases on launch (`electron-updater`).
 When a newer release is ready they offer Restart now; that applies the update
 without you downloading the installer by hand. Dev mode (`npm start`) skips
 update checks.
+
+## In-app browser (Chromium)
+
+Device admin pages open inside Meshwatch using Electron's bundled Chromium —
+not Chrome, Edge, or a system tab. Navigation stays on private LAN addresses
+only.
+
+Chromium is not a separate thing you maintain. It ships inside Electron. When
+Dependabot opens an Electron bump and you merge + release Meshwatch, end users
+receive that newer Chromium through the normal app update. You update the app;
+Chromium comes along.

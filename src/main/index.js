@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const db = require("./db");
 const discovery = require("./discovery");
@@ -7,6 +7,7 @@ const tplink = require("./tplink");
 const audit = require("./audit");
 const credentials = require("./credentials");
 const updater = require("./updater");
+const browser = require("./browser");
 
 let win = null;
 
@@ -26,6 +27,7 @@ function createWindow() {
     }
   });
   win.removeMenu();
+  browser.attach(win);
   win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
 }
 
@@ -51,15 +53,22 @@ const progress = (stage, detail) => {
 ipcMain.handle("scan:run", async () => {
   const devices = await discovery.run({ onProgress: progress });
   db.recordScan(devices);
-  return devices;
+  // Return DB rows so user renames (name_override) are applied.
+  return db.listDevices();
 });
 
 ipcMain.handle("devices:list", () => db.listDevices());
 ipcMain.handle("devices:topology", () => discovery.topology(db.listDevices()));
 ipcMain.handle("devices:drift", () => discovery.detectDrift(db.listDevices()));
 ipcMain.handle("devices:note", (_e, { mac, note }) => db.setNote(mac, note));
+ipcMain.handle("devices:rename", (_e, { mac, name }) => db.setNameOverride(mac, name));
+ipcMain.handle("devices:firmwareManual", (_e, { mac, version }) => db.setFirmwareManual(mac, version));
 ipcMain.handle("audit:run", async () => audit.run(db.listDevices()));
 ipcMain.handle("subnet:get", () => discovery.detectSubnet());
+ipcMain.handle("credentials:available", () => credentials.available());
+ipcMain.handle("pihole:state", () => db.getPiHoleState());
+ipcMain.handle("pihole:prefs", (_e, prefs) => db.setPiHolePrefs(prefs || {}));
+ipcMain.handle("pihole:target", () => pihole.resolveTarget());
 
 ipcMain.handle("pihole:stats", () => pihole.stats());
 ipcMain.handle("pihole:leases", () => pihole.leases());
@@ -104,22 +113,28 @@ ipcMain.handle("tplink:action", async (_e, { ip, action, args }) => {
 
 // Metadata only (label/username/when-saved) - never the password. The
 // plaintext only ever gets decrypted inside the main process, for scripting
-// a webview fill action - see credentials.js. That fill wiring lands with
-// phase 5's real interface, once there's an embedded page for it to fill.
+// a form-fill into the in-app browser (see credentials.js / browser.js).
 ipcMain.handle("credentials:save", (_e, { mac, label, username, password }) => credentials.save(mac, { label, username, password }));
 ipcMain.handle("credentials:list", () => credentials.list());
 ipcMain.handle("credentials:has", (_e, { mac }) => credentials.has(mac));
 ipcMain.handle("credentials:remove", (_e, { mac }) => credentials.remove(mac));
 
+// In-app Chromium (Electron) — device admin pages stay inside Meshwatch.
+ipcMain.handle("browser:open", (_e, { url }) => browser.open(url));
+ipcMain.handle("browser:close", () => browser.close());
+ipcMain.handle("browser:back", () => browser.back());
+ipcMain.handle("browser:forward", () => browser.forward());
+ipcMain.handle("browser:reload", () => browser.reload());
+ipcMain.handle("browser:bounds", (_e, bounds) => browser.setBounds(bounds));
+ipcMain.handle("browser:url", () => browser.getUrl());
+
+// Kept for rare cases that truly need the OS browser — still LAN-only.
 ipcMain.handle("shell:open", (_e, { url }) => {
-  // Only private LAN addresses — never open an arbitrary external URL.
-  if (!/^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?(\/|$)/.test(url)) {
-    return { ok: false, reason: "not a local address" };
-  }
-  shell.openExternal(url);
-  return { ok: true };
+  if (!browser.isLanUrl(url)) return { ok: false, reason: "not a local address" };
+  return browser.open(url);
 });
 
 ipcMain.handle("update:check", () => updater.checkNow());
 ipcMain.handle("update:install", () => updater.installNow());
 ipcMain.handle("app:version", () => app.getVersion());
+ipcMain.handle("app:versions", () => process.versions);

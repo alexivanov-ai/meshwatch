@@ -14,6 +14,8 @@
 const os = require("os");
 const { exec } = require("child_process");
 const dgram = require("dgram");
+const net = require("net");
+const dns = require("dns").promises;
 const http = require("http");
 const ping = require("ping");
 const { Bonjour } = require("bonjour-service");
@@ -43,6 +45,37 @@ function isPrivateIp(ip) {
     return n >= 16 && n <= 31;
   }
   return false;
+}
+
+function parseIpv4(ip) {
+  if (!IPV4_RE.test(ip)) return null;
+  const parts = ip.split(".").map(Number);
+  if (parts.some((n) => n < 0 || n > 255)) return null;
+  return parts;
+}
+
+// Addresses that can be real hosts on a home LAN — not network, broadcast,
+// multicast, loopback, or link-local. Our scan is /24, so .0 and .255 are out.
+function isUsableHostIp(ip) {
+  const parts = parseIpv4(ip);
+  if (!parts) return false;
+  const a = parts[0];
+  const d = parts[3];
+
+  if (a === 0 || a === 127 || a >= 224) return false; // this-net, loopback, multicast/reserved
+  if (a === 169 && parts[1] === 254) return false; // APIPA / link-local
+  if (!isPrivateIp(ip)) return false;
+
+  // /24 host range is 1–254. .0 = network, .255 = subnet broadcast (e.g. 192.168.1.255).
+  if (d === 0 || d === 255) return false;
+
+  return true;
+}
+
+function isBroadcastMac(mac) {
+  if (!mac) return true;
+  const n = String(mac).toUpperCase().replace(/-/g, ":");
+  return n === "FF:FF:FF:FF:FF:FF" || n === "00:00:00:00:00:00";
 }
 
 function detectSubnet() {
@@ -92,6 +125,10 @@ function inSubnet(ip) {
   return ip && ip.indexOf(subnet.prefix) === 0;
 }
 
+function isDiscoverableHost(ip) {
+  return inSubnet(ip) && isUsableHostIp(ip);
+}
+
 function pingHost(ip) {
   return ping.promise.probe(ip, { timeout: 1, extra: process.platform === "win32" ? ["-n", "1"] : ["-c", "1"] })
     .then(r => (r.alive ? ip : null))
@@ -125,8 +162,10 @@ function arpTable() {
         const macM = line.match(/([0-9a-f]{2}[:-]){5}[0-9a-f]{2}/i);
         if (!ipM || !macM) continue;
         const ip = ipM[1];
-        if (!inSubnet(ip)) continue;
-        out.push({ ip, mac: macM[0].replace(/-/g, ":").toUpperCase() });
+        if (!isDiscoverableHost(ip)) continue;
+        const mac = macM[0].replace(/-/g, ":").toUpperCase();
+        if (isBroadcastMac(mac)) continue;
+        out.push({ ip, mac });
       }
       resolve(out);
     });
@@ -144,9 +183,9 @@ function mdnsBrowse(durationMs = 4000) {
 
     const found = new Map();
     const record = (service) => {
-      const ip = (service.addresses || []).find(a => IPV4_RE.test(a) && inSubnet(a))
+      const ip = (service.addresses || []).find(a => IPV4_RE.test(a) && isDiscoverableHost(a))
         || (service.referer && service.referer.address);
-      if (!ip || !inSubnet(ip)) return;
+      if (!ip || !isDiscoverableHost(ip)) return;
       if (!found.has(ip)) found.set(ip, { ip, name: service.name || null, service: service.type || null });
     };
 
@@ -177,7 +216,7 @@ function ssdpSearch(durationMs = 4000) {
     const found = new Map();
     client.on("response", (headers, _statusCode, rinfo) => {
       const ip = rinfo && rinfo.address;
-      if (!ip || !inSubnet(ip)) return;
+      if (!ip || !isDiscoverableHost(ip)) return;
       if (!found.has(ip)) {
         found.set(ip, {
           ip,
@@ -370,9 +409,119 @@ function snmpGet(ip, oid, community = "public", timeoutMs = 1200) {
 
 async function snmpProbe(ip) {
   const sysName = await snmpGet(ip, "1.3.6.1.2.1.1.5.0");
-  const sysDescr = sysName ? await snmpGet(ip, "1.3.6.1.2.1.1.1.0") : await snmpGet(ip, "1.3.6.1.2.1.1.1.0");
+  const sysDescr = await snmpGet(ip, "1.3.6.1.2.1.1.1.0");
   if (!sysName && !sysDescr) return null;
   return { sysName: sysName || null, sysDescr: sysDescr || null };
+}
+
+// Reverse DNS (PTR) against whatever resolver this PC uses — often the
+// Pi-hole / router, which may already know a hostname for the lease.
+async function dnsReverse(ip) {
+  try {
+    const names = await dns.reverse(ip);
+    const name = (names || []).find(Boolean);
+    return name ? String(name).replace(/\.$/, "").split(".")[0] : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Brief TCP connect — populates the OS ARP cache for hosts that ignore ICMP
+// but still have a listening service (or reject the connect).
+function touchHost(ip, port = 80, timeoutMs = 400) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: ip, port, timeout: timeoutMs }, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on("error", () => resolve(false));
+    socket.on("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+// NetBIOS Node Status (NBSTAT) — Windows / Samba hosts often answer with
+// their computer name even when ping is blocked.
+function encodeNetbiosName(name) {
+  const padded = (name + "                ").slice(0, 16);
+  const out = Buffer.alloc(34);
+  out[0] = 32;
+  for (let i = 0; i < 16; i++) {
+    const c = padded.charCodeAt(i);
+    out[1 + i * 2] = 0x41 + ((c >> 4) & 0x0f);
+    out[2 + i * 2] = 0x41 + (c & 0x0f);
+  }
+  out[33] = 0;
+  return out;
+}
+
+function netbiosStatus(ip, timeoutMs = 900) {
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket("udp4");
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      try { socket.close(); } catch (e) { /* ignore */ }
+      resolve(value);
+    };
+
+    const txn = Math.floor(Math.random() * 0xffff);
+    const header = Buffer.alloc(12);
+    header.writeUInt16BE(txn, 0);
+    header.writeUInt16BE(0x0000, 2);
+    header.writeUInt16BE(1, 4); // questions
+    const qname = encodeNetbiosName("*");
+    const qtail = Buffer.alloc(4);
+    qtail.writeUInt16BE(0x0021, 0); // NBSTAT
+    qtail.writeUInt16BE(0x0001, 2); // IN
+    const packet = Buffer.concat([header, qname, qtail]);
+
+    const t = setTimeout(() => done(null), timeoutMs);
+    socket.on("message", (msg) => {
+      clearTimeout(t);
+      // After question echo, names block: count at offset, then 18-byte records.
+      try {
+        let offset = 12;
+        if (msg[offset] === 0x20) offset += 34;
+        else {
+          while (offset < msg.length && msg[offset] !== 0) offset += 1 + msg[offset];
+          offset += 1;
+        }
+        offset += 4; // type + class
+        if (offset + 2 > msg.length) return done(null);
+        // TTL(4) + data len(2) + name count(1)
+        offset += 4;
+        const dataLen = msg.readUInt16BE(offset); offset += 2;
+        if (dataLen < 1 || offset >= msg.length) return done(null);
+        const count = msg[offset]; offset += 1;
+        for (let i = 0; i < count && offset + 18 <= msg.length; i++) {
+          const raw = msg.slice(offset, offset + 15).toString("ascii").replace(/\0/g, "").trim();
+          const nameType = msg[offset + 15];
+          offset += 18;
+          // 0x00 workstation, 0x20 file server — skip group names (bit in flags)
+          const flags = msg[offset - 2];
+          const isGroup = (flags & 0x80) !== 0;
+          if (!isGroup && raw && (nameType === 0x00 || nameType === 0x20)) {
+            return done(raw);
+          }
+        }
+      } catch (e) { /* ignore */ }
+      done(null);
+    });
+    socket.on("error", () => {
+      clearTimeout(t);
+      done(null);
+    });
+    try {
+      socket.send(packet, 137, ip);
+    } catch (e) {
+      clearTimeout(t);
+      done(null);
+    }
+  });
 }
 
 function matchKnown(device, gatewayIp) {
@@ -408,16 +557,19 @@ function usableDeviceTitle(title) {
 
 function pickName(d, k) {
   // Prefer real host/device names. Never fall back to the OUI vendor string —
-  // that belongs in the Vendor column.
+  // that belongs in the Vendor column. User renames live in DB as name_override
+  // and are applied after the scan in listDevices().
   const dhcp = d.lease && d.lease.hostname;
   const mdns = d.mdnsHit && d.mdnsHit.name;
+  const dnsName = d.dnsName || null;
+  const netbios = d.netbiosName || null;
   const known = k && k.name;
   const snmpName = d.snmp && d.snmp.sysName;
   const title = usableDeviceTitle(d.web && d.web.title);
   const model = (k && k.model && k.model !== "unknown") ? k.model : null;
   const snmpModel = d.snmp && d.snmp.sysDescr && (d.snmp.sysDescr.match(/\b(TL-[A-Z0-9]+|Archer\s+\w+|RE\d+|SG\d+\w*)\b/i) || [])[0];
 
-  return dhcp || mdns || known || snmpName || title || model || snmpModel || "Unidentified host";
+  return dhcp || mdns || dnsName || netbios || known || snmpName || title || model || snmpModel || "Unidentified host";
 }
 
 async function run({ onProgress } = {}) {
@@ -428,17 +580,35 @@ async function run({ onProgress } = {}) {
 
   const alive = await pingSweep((s, d) => report(s, d));
 
-  report("mdns", { note: "browsing mDNS" });
+  report("mdns", { note: "browsing mDNS / Bonjour" });
   const mdns = await mdnsBrowse();
 
-  report("ssdp", { note: "SSDP search" });
+  report("ssdp", { note: "SSDP / UPnP search" });
   const ssdp = await ssdpSearch();
 
   report("dhcp", { note: "reading Pi-hole leases" });
   const leases = await dhcpLeases();
 
+  // Touch mDNS/SSDP/DHCP IPs so quiet hosts still land in the OS ARP table.
+  const extraIps = new Set();
+  for (const x of mdns) if (x.ip && isDiscoverableHost(x.ip)) extraIps.add(x.ip);
+  for (const x of ssdp) if (x.ip && isDiscoverableHost(x.ip)) extraIps.add(x.ip);
+  for (const x of leases) if (x.ip && isDiscoverableHost(x.ip)) extraIps.add(x.ip);
+  for (const ip of alive) if (isDiscoverableHost(ip)) extraIps.add(ip);
+
+  report("touch", { note: "waking ARP via short TCP probes", count: extraIps.size });
+  await Promise.all(Array.from(extraIps).map((ip) =>
+    touchHost(ip, 80).then((ok) => ok || touchHost(ip, 443)).then((ok) => ok || touchHost(ip, 445))
+  ));
+
   report("arp", { note: "reading OS ARP table" });
-  const arp = await arpTable();
+  let arp = await arpTable();
+
+  // Second ARP pass after a brief settle for late replies.
+  if (extraIps.size && arp.length < extraIps.size) {
+    await new Promise((r) => setTimeout(r, 300));
+    arp = await arpTable();
+  }
 
   report("gateway", { note: "reading OS routing table" });
   const gatewayIp = await defaultGateway();
@@ -456,6 +626,8 @@ async function run({ onProgress } = {}) {
       vendor: oui.vendor(entry.mac) || null,
       web: null,
       snmp: null,
+      dnsName: null,
+      netbiosName: null,
       methods: ["arp"]
         .concat(alive.indexOf(entry.ip) !== -1 ? ["ping"] : [])
         .concat(lease ? ["dhcp"] : [])
@@ -464,10 +636,19 @@ async function run({ onProgress } = {}) {
     });
   }
 
-  // Hosts that answered ping/mDNS/SSDP but aren't in ARP yet (rare) - skip;
-  // without a MAC we can't key the inventory.
-
   const devices = Array.from(byMac.values());
+
+  report("dns", { note: "reverse DNS (PTR) lookups", count: devices.length });
+  await Promise.all(devices.map(async (d) => {
+    d.dnsName = await dnsReverse(d.ip);
+    if (d.dnsName) d.methods.push("dns");
+  }));
+
+  report("netbios", { note: "NetBIOS name status", count: devices.length });
+  await Promise.all(devices.map(async (d) => {
+    d.netbiosName = await netbiosStatus(d.ip);
+    if (d.netbiosName) d.methods.push("netbios");
+  }));
 
   report("webprobe", { note: "checking each device for an admin web page", count: devices.length });
   await Promise.all(devices.map(async (d) => { d.web = await webProbe(d.ip); }));
@@ -498,6 +679,7 @@ async function run({ onProgress } = {}) {
     d.subnet = subnet.cidr;
 
     delete d.lease; delete d.mdnsHit; delete d.ssdpHit;
+    delete d.dnsName; delete d.netbiosName;
   }
 
   const gatewayDevice = devices.find(d => d.ip === gatewayIp);
@@ -544,5 +726,5 @@ function detectDrift(devices) {
 
 module.exports = {
   run, topology, detectDrift, webProbe, defaultGateway, pingSweep, arpTable,
-  detectSubnet, getSubnet, snmpProbe
+  detectSubnet, getSubnet, snmpProbe, isUsableHostIp, isDiscoverableHost
 };

@@ -20,14 +20,15 @@
       <button class="nav" data-view="inventory">Inventory <span class="badge" id="badge-inventory"></span></button>
       <button class="nav" data-view="topology">Topology</button>
       <button class="nav" data-view="audit">Security audit <span class="badge" id="badge-audit"></span></button>
-      <button class="nav" data-view="pihole">Pi-hole · SSH</button>
+      <button class="nav" data-view="pihole" id="nav-pihole" hidden>Pi-hole · SSH</button>
+      <button class="nav" data-view="discovery">Discovery <span class="badge" id="badge-discovery"></span></button>
+      <button class="nav" data-view="preferences">Preferences</button>
       <div class="spacer"></div>
       <button id="scan" class="primary">Scan network now</button>
       <div class="nav-meta" id="last-scan">No scan yet</div>
     </nav>
 
     <section id="stage">
-      <!-- Overview -->
       <div class="view on" id="view-overview">
         <div class="page-head">
           <h1>Home network</h1>
@@ -48,13 +49,8 @@
             <p class="muted" id="overview-score-note">Run a scan, then open Security audit.</p>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Discovery log</h2></div>
-          <div id="log" class="log"></div>
-        </div>
       </div>
 
-      <!-- Inventory -->
       <div class="view" id="view-inventory">
         <div class="page-head row">
           <div>
@@ -63,26 +59,27 @@
           </div>
           <input type="search" id="inventory-filter" placeholder="Filter by name, IP, vendor…" autocomplete="off">
         </div>
+        <div class="chip-row" id="inventory-chips"></div>
         <table id="devices">
           <thead>
             <tr>
-              <th>Name</th><th>IP</th><th>MAC</th><th>Vendor</th><th>Type</th><th>Found via</th>
+              <th>Name</th><th>IP</th><th>MAC</th><th>Vendor</th><th>Type</th>
+              <th>Firmware</th><th>Risk</th><th>Status</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
 
-      <!-- Topology -->
       <div class="view" id="view-topology">
         <div class="page-head">
           <h1>Topology</h1>
           <p class="lede">Gateway and what hangs off it · inferred links marked</p>
         </div>
+        <p class="topo-note">Uplink inferred from DHCP lease origin, per-node client tables and RSSI where available. Links without a real parent table are estimates — unmanaged gear reports nothing upstream.</p>
         <div id="topology-tree" class="topo"></div>
       </div>
 
-      <!-- Audit -->
       <div class="view" id="view-audit">
         <div class="page-head row">
           <div>
@@ -95,13 +92,22 @@
         <div id="audit-list"></div>
       </div>
 
-      <!-- Pi-hole -->
       <div class="view" id="view-pihole">
         <div class="page-head">
           <h1>Pi-hole · SSH</h1>
-          <p class="lede">DNS stats and remote shell (phase 2 wires credentials)</p>
+          <p class="lede">DNS stats and remote shell</p>
         </div>
         <div class="stat-row" id="pihole-stats"></div>
+        <div class="split">
+          <div class="panel">
+            <div class="panel-head"><h2>Top blocked</h2></div>
+            <div id="pihole-blocked" class="empty">Connect Pi-hole credentials in Preferences (phase 2 wires the API).</div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Host</h2></div>
+            <div id="pihole-host" class="empty">CPU, disk and apt updates appear here once SSH is connected.</div>
+          </div>
+        </div>
         <div class="panel">
           <div class="panel-head"><h2>Commands</h2></div>
           <div class="btn-row" id="pihole-actions">
@@ -109,6 +115,9 @@
             <button type="button" data-cmd="pihole -g">Update gravity</button>
             <button type="button" data-cmd="systemctl restart pihole-FTL" class="warn">Restart FTL</button>
             <button type="button" data-cmd="cat /etc/pihole/dhcp.leases">DHCP leases</button>
+            <button type="button" data-cmd="vcgencmd measure_temp">CPU temperature</button>
+            <button type="button" data-cmd="df -h">Disk space</button>
+            <button type="button" data-cmd="apt list --upgradable">Apt updates</button>
           </div>
           <form id="pihole-form" class="cmd-form">
             <input type="text" id="pihole-cmd" placeholder="Arbitrary command…" autocomplete="off">
@@ -117,12 +126,111 @@
           <pre id="pihole-out" class="log"></pre>
         </div>
       </div>
+
+      <div class="view" id="view-discovery">
+        <div class="page-head row">
+          <div>
+            <h1>Discovery</h1>
+            <p class="lede">Subnet sweep</p>
+          </div>
+          <button type="button" class="secondary" id="rescan">Rescan</button>
+        </div>
+        <div class="panel">
+          <div class="scan-progress-head">
+            <div>
+              <div class="muted upper" id="scan-subnet-label">Subnet</div>
+              <div class="scan-found" id="scan-found">Idle</div>
+            </div>
+            <div class="scan-bar"><div id="scan-bar-fill"></div></div>
+          </div>
+          <div class="scan-meta" id="scan-meta"></div>
+          <div id="log" class="log tall"></div>
+        </div>
+      </div>
+
+      <div class="view" id="view-preferences">
+        <div class="page-head">
+          <h1>Preferences</h1>
+          <p class="lede">Scanning, credentials and alerts</p>
+        </div>
+        <div class="prefs-list">
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Show offline devices</div>
+              <div class="pref-note">Keep devices not seen in the last scan in Inventory</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-offline" checked> On</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Auto-scan on launch</div>
+              <div class="pref-note">Start a sweep when the window opens</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-autoscan"> Off</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Check for app updates</div>
+              <div class="pref-note">Installed builds only — GitHub Releases</div>
+            </div>
+            <button type="button" class="secondary" id="pref-update">Check now</button>
+          </div>
+        </div>
+
+        <div class="panel" id="pihole-prefs-panel" style="margin-top:20px" hidden>
+          <div class="panel-head"><h2>Pi-hole · SSH</h2></div>
+          <p class="muted" id="pihole-prefs-note">Shown because a Pi / Pi-hole was discovered on this network. Remains available even if it is offline later.</p>
+          <div class="prefs-list">
+            <div class="pref-row">
+              <div>
+                <div class="pref-label">SSH port</div>
+                <div class="pref-note">Default is 22. Set whatever port you expose (e.g. 2222) — Meshwatch will use it for shell commands.</div>
+              </div>
+              <input type="number" id="pref-ssh-port" min="1" max="65535" step="1" value="22" style="width:120px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
+            </div>
+            <div class="pref-row">
+              <div>
+                <div class="pref-label">SSH username</div>
+                <div class="pref-note">Account Meshwatch will use once key auth is wired (phase 2)</div>
+              </div>
+              <input type="text" id="pref-ssh-user" value="admin" autocomplete="username" style="width:160px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
+            </div>
+            <div class="pref-row">
+              <div>
+                <div class="pref-label">Remembered host</div>
+                <div class="pref-note" id="pihole-host-note">Not set yet</div>
+              </div>
+              <span class="muted" id="pihole-host-value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:20px">
+          <div class="panel-head"><h2>Credential vault</h2></div>
+          <p class="muted" id="cred-status">OS-backed encryption (DPAPI). Passwords never leave this machine.</p>
+          <form id="cred-form" class="cred-form">
+            <select id="cred-mac" required></select>
+            <input type="text" id="cred-label" placeholder="Label (e.g. switch admin)" autocomplete="off">
+            <input type="text" id="cred-user" placeholder="Username" autocomplete="username">
+            <input type="password" id="cred-pass" placeholder="Password" autocomplete="new-password" required>
+            <button type="submit" class="primary-inline">Save</button>
+          </form>
+          <div id="cred-list"></div>
+        </div>
+
+        <div class="btn-row" style="margin-top:20px">
+          <button type="button" class="primary-inline" id="save-prefs">Save preferences</button>
+          <button type="button" class="secondary" id="export-csv">Export inventory CSV</button>
+        </div>
+      </div>
     </section>
 
-    <!-- Device detail drawer -->
     <aside id="detail" class="detail" hidden>
       <div class="detail-head">
-        <h2 id="detail-name">Device</h2>
+        <div>
+          <div class="muted upper" id="detail-status">Online</div>
+          <h2 id="detail-name">Device</h2>
+        </div>
         <button type="button" class="icon" id="detail-close" aria-label="Close">×</button>
       </div>
       <div id="detail-body"></div>
@@ -136,6 +244,32 @@
   </footer>
 
   <div id="ctx" class="ctx" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 id="modal-title">Edit</h3>
+      <p class="muted" id="modal-hint"></p>
+      <textarea id="modal-input" rows="4"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="modal-cancel">Cancel</button>
+        <button type="button" class="primary-inline" id="modal-ok">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="browser" class="browser" hidden>
+    <div class="browser-bar">
+      <button type="button" id="browser-back" title="Back">←</button>
+      <button type="button" id="browser-forward" title="Forward">→</button>
+      <button type="button" id="browser-reload" title="Reload">↻</button>
+      <input type="text" id="browser-url" readonly>
+      <span id="browser-title" class="browser-title"></span>
+      <button type="button" id="browser-close" class="browser-close">Close</button>
+    </div>
+    <div id="browser-frame" class="browser-frame"></div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

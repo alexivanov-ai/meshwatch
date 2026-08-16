@@ -10,11 +10,16 @@ contextBridge.exposeInMainWorld("meshwatch", {
   getAudit: () => ipcRenderer.invoke("audit:run"),
   getSubnet: () => ipcRenderer.invoke("subnet:get"),
   setNote: (mac, note) => ipcRenderer.invoke("devices:note", { mac, note }),
+  renameDevice: (mac, name) => ipcRenderer.invoke("devices:rename", { mac, name }),
+  setFirmwareManual: (mac, version) => ipcRenderer.invoke("devices:firmwareManual", { mac, version }),
 
   pihole: {
     stats: () => ipcRenderer.invoke("pihole:stats"),
     leases: () => ipcRenderer.invoke("pihole:leases"),
-    exec: (command) => ipcRenderer.invoke("pihole:exec", { command })
+    exec: (command) => ipcRenderer.invoke("pihole:exec", { command }),
+    state: () => ipcRenderer.invoke("pihole:state"),
+    setPrefs: (prefs) => ipcRenderer.invoke("pihole:prefs", prefs),
+    target: () => ipcRenderer.invoke("pihole:target")
   },
 
   tplink: {
@@ -25,15 +30,42 @@ contextBridge.exposeInMainWorld("meshwatch", {
   // Passwords never cross this bridge - save() sends one down to be
   // encrypted and stored, list() only ever returns label/username metadata.
   credentials: {
+    available: () => ipcRenderer.invoke("credentials:available"),
     save: (mac, label, username, password) => ipcRenderer.invoke("credentials:save", { mac, label, username, password }),
     list: () => ipcRenderer.invoke("credentials:list"),
     has: (mac) => ipcRenderer.invoke("credentials:has", { mac }),
     remove: (mac) => ipcRenderer.invoke("credentials:remove", { mac })
   },
 
-  openExternal: (url) => ipcRenderer.invoke("shell:open", { url }),
+  openExternal: (url) => ipcRenderer.invoke("browser:open", { url }),
+  browser: {
+    open: (url) => ipcRenderer.invoke("browser:open", { url }),
+    close: () => ipcRenderer.invoke("browser:close"),
+    back: () => ipcRenderer.invoke("browser:back"),
+    forward: () => ipcRenderer.invoke("browser:forward"),
+    reload: () => ipcRenderer.invoke("browser:reload"),
+    setBounds: (bounds) => ipcRenderer.invoke("browser:bounds", bounds),
+    getUrl: () => ipcRenderer.invoke("browser:url"),
+    on: (channel, cb) => {
+      const map = {
+        opened: "browser:opened",
+        closed: "browser:closed",
+        navigated: "browser:navigated",
+        title: "browser:title",
+        loading: "browser:loading",
+        error: "browser:error",
+        needBounds: "browser:need-bounds"
+      };
+      const ch = map[channel];
+      if (!ch) return () => {};
+      const handler = (_e, payload) => cb(payload);
+      ipcRenderer.on(ch, handler);
+      return () => ipcRenderer.removeListener(ch, handler);
+    }
+  },
 
   version: () => ipcRenderer.invoke("app:version"),
+  versions: () => ipcRenderer.invoke("app:versions"),
   checkForUpdate: () => ipcRenderer.invoke("update:check"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
   onUpdateStatus: (cb) => {

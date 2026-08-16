@@ -26,7 +26,7 @@ finds what's actually there, this list only helps label it once found.
 | Device | Role | Manageable |
 | --- | --- | --- |
 | TP-Link Archer BE220 | Gateway router | Local API, unofficial |
-| Raspberry Pi 5 | Pi-hole: DNS + DHCP for the whole network, confirmed at `192.168.1.63` | REST API + SSH on port 2222 |
+| Raspberry Pi 5 | Pi-hole: DNS + DHCP for the whole network, confirmed at `192.168.1.63` | REST API + SSH (port set in Preferences; this LAN uses 2222) |
 | TP-Link TL-SG108E | Managed 8-port switch, confirmed at `192.168.1.24` | Web UI (+ SNMP where enabled) |
 | 8-port switch (unmanaged) | Unmanaged switch | No. Infer only |
 | TP-Link Archer AX20 | Router in AP mode | Local API, unofficial |
@@ -106,6 +106,8 @@ vault itself is phase-1 infrastructure and already usable via IPC
 1. `contextIsolation: true`, `nodeIntegration: false`. All privileged work
    happens in the main process and crosses to the renderer through the narrow
    API in `src/preload.js`. Never widen it to expose `ipcRenderer` directly.
+   Device admin pages open in the in-app Chromium view (`src/main/browser.js`),
+   never as a system browser tab. That view only loads private LAN URLs.
 2. Credentials (router passwords, Pi-hole API token, SSH key path, any device
    login saved via the credential vault) go through OS-backed encryption
    (Electron `safeStorage` - see "Credential vault" below), never in a plain
@@ -129,15 +131,16 @@ Discovery first, interface last. If the scan does not reliably find the devices
 listed above, nothing built on top of it matters.
 
 - [x] Phase 0 - Electron scaffold, IPC, SQLite, minimal renderer
-- [x] Phase 1 - Discovery engine: ping sweep + ARP table, mDNS, SSDP, web probe,
-  SNMP sysName/sysDescr, OS subnet + default-gateway detection, config-drift
-  check, local credential vault. DHCP leases wiring is a real stub pending
-  phase 2's Pi-hole credentials.
+- [x] Phase 1 - Discovery engine: ping sweep + ARP table, mDNS, SSDP, DNS PTR,
+  NetBIOS, web probe, SNMP sysName/sysDescr, OS subnet + default-gateway
+  detection, config-drift check, local credential vault, user device renames.
+  DHCP leases wiring is a real stub pending phase 2's Pi-hole credentials.
 - [ ] Phase 2 - Pi-hole: REST stats, SSH console on port 2222
 - [ ] Phase 3 - TP-Link control. Research feasibility and report before coding
 - [ ] Phase 4 - Security audit: firmware age, open ports, config weaknesses
 - [x] Phase 5 - Rebuild the UI to match `design/Network Dashboard.dc.html`
-  (overview, inventory with click + context menu, topology, audit, Pi-hole)
+  (overview, inventory with filters/click/context menu, topology, audit,
+  Pi-hole, Discovery progress, Preferences + credential vault + CSV export)
 - [ ] Phase 6 - Installers: NSIS on Windows, dmg on macOS (auto-update wired)
 
 The copy-paste prompt for each phase is in `PROMPTS.md`.
@@ -162,6 +165,7 @@ src/main/tplink.js      TP-Link control. Mostly unimplemented by design
 src/main/audit.js       Security findings and scoring
 src/main/credentials.js Local credential vault (safeStorage-encrypted, keyed by MAC)
 src/main/updater.js     In-app updates from GitHub Releases (installed builds only)
+src/main/browser.js     In-app Chromium (WebContentsView) for device admin pages
 src/preload.js          The only bridge to the renderer
 src/renderer/           Interface matched to design/Network Dashboard.dc.html
 config/devices.json     Known models/roles - see "config/devices.json is a hint" above

@@ -18,8 +18,8 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "devDependencies": {
-    "electron": "^32.0.0",
-    "electron-builder": "^25.0.5"
+    "electron": "^39.8.10",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",

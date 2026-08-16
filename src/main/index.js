@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const db = require("./db");
 const discovery = require("./discovery");
 const pi = require("./pi");
+const piServices = require("./pi-services");
 const dns = require("./dns");
 const tplink = require("./tplink");
 const audit = require("./audit");
@@ -251,6 +252,8 @@ ipcMain.handle("pi:apt:upgrade", async () => confirmedExec(pi.aptUpgradeCommand(
 ipcMain.handle("pi:apt:apps", () => pi.installedApps());
 ipcMain.handle("pi:rebootRequired", () => pi.rebootRequired());
 ipcMain.handle("pi:hostStats", () => pi.hostStats());
+ipcMain.handle("pi:services:list", () => piServices.cachedServices());
+ipcMain.handle("pi:services:rescan", () => piServices.discoverServices());
 ipcMain.handle("pi:block", async (_e, { mac, blocked }) => {
   const d = findByMac(mac);
   if (!d || !d.ip) return { ok: false, reason: "device has no address" };
@@ -277,7 +280,13 @@ ipcMain.handle("tplink:action", async (_e, { ip, action, args }) => {
   return tplink.action(device, action, args);
 });
 
-ipcMain.handle("credentials:save", (_e, { mac, label, username, password }) => credentials.save(mac, { label, username, password }));
+ipcMain.handle("credentials:save", (_e, { mac, label, username, password }) => {
+  const r = credentials.save(mac, { label, username, password });
+  if (r.ok && mac === db.getPiState().mac) {
+    piServices.discoverServices().catch(() => {}); // best-effort, don't block the save response
+  }
+  return r;
+});
 ipcMain.handle("credentials:list", () => credentials.list());
 ipcMain.handle("credentials:has", (_e, { mac }) => credentials.has(mac));
 ipcMain.handle("credentials:remove", (_e, { mac }) => credentials.remove(mac));

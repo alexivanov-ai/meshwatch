@@ -859,6 +859,7 @@ async function loadPi() {
       : escapeHtml(apps.ok ? "No manually-installed apps found." : (apps.reason || "Could not read installed apps."));
 
     loadPiTerminalTarget();
+    loadPiServices();
   } catch (e) {
     $("#pi-stats").innerHTML = '<div class="empty">' + escapeHtml(e.message) + "</div>";
   }
@@ -909,6 +910,31 @@ function loadPiTerminalTarget() {
     window.meshwatch.terminal.start(term.rows, term.cols);
   }
 }
+
+async function loadPiServices() {
+  const list = await window.meshwatch.pi.servicesList();
+  renderPiServices(list);
+}
+
+function renderPiServices(list) {
+  const el = $("#pi-services");
+  el.classList.toggle("empty", !list.length);
+  el.innerHTML = list.length
+    ? "<ul>" + list.map((s) =>
+        "<li>" + escapeHtml(s.name) + (s.name === "Unknown service" ? ' <span class="est">estimate</span>' : "") +
+        " · port " + escapeHtml(String(s.port)) + (s.title ? " · " + escapeHtml(s.title) : "") +
+        ' <button type="button" class="pi-svc-open" data-url="' + escapeHtml(s.url) + '">Open</button></li>'
+      ).join("") + "</ul>"
+    : "No extra services detected yet.";
+  $$(".pi-svc-open", el).forEach((b) => b.addEventListener("click", () => openInAppBrowser(b.dataset.url)));
+}
+
+$("#pi-rescan-services").addEventListener("click", async () => {
+  toast("Rescanning services…");
+  const list = await window.meshwatch.pi.servicesRescan();
+  renderPiServices(list);
+  toast(list.length + " service(s) found");
+});
 
 const piServicesToggle = $("#pi-services-toggle");
 if (piServicesToggle) {

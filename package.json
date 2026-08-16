@@ -10,20 +10,19 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "electron .",
-    "start:debug": "electron . --enable-logging",
+    "ensure:electron": "node scripts/ensure-electron.js",
+    "start": "node scripts/ensure-electron.js && electron .",
+    "start:debug": "node scripts/ensure-electron.js && electron . --enable-logging",
     "test:discovery": "node scripts/test-discovery.js",
-    "sync:electron": "node scripts/sync-electron-abi.js",
-    "build:win": "electron-builder --win nsis",
-    "build:mac": "electron-builder --mac dmg",
-    "postinstall": "node scripts/sync-electron-abi.js && electron-builder install-app-deps"
+    "build:win": "node scripts/ensure-electron.js && electron-builder --win nsis",
+    "build:mac": "node scripts/ensure-electron.js && electron-builder --mac dmg"
   },
   "devDependencies": {
     "electron": "^43.4.0",
     "electron-builder": "^25.0.5"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^13.0.3",
     "bonjour-service": "^1.2.1",
     "electron-updater": "^6.8.9",
     "node-ssdp": "^4.0.1",

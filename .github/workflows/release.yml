@@ -78,7 +78,12 @@ jobs:
         run: npm pkg set version="${{ steps.version.outputs.version }}"
 
       - name: Install dependencies
+        # ignore-scripts is set in .npmrc so npm does not run the broken
+        # implicit "node-gyp rebuild" for better-sqlite3 (npm/cli#9837).
         run: npm ci --no-audit --no-fund
+
+      - name: Download Electron binary
+        run: node scripts/ensure-electron.js
 
       - name: Build Windows installer
         # electron-builder detects CI and defaults to trying its own GitHub

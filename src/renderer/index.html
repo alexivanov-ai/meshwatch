@@ -42,7 +42,7 @@
       <button class="nav" data-view="inventory">Inventory <span class="badge" id="badge-inventory"></span></button>
       <button class="nav" data-view="topology">Topology</button>
       <button class="nav" data-view="audit">Security audit <span class="badge" id="badge-audit"></span></button>
-      <button class="nav" data-view="pihole" id="nav-pihole">Pi-hole · SSH</button>
+      <button class="nav" data-view="pi" id="nav-pi" hidden>Pi</button>
       <button class="nav" data-view="discovery">Discovery <span class="badge" id="badge-discovery"></span></button>
       <button class="nav" data-view="preferences">Preferences</button>
       <div class="spacer"></div>
@@ -124,40 +124,35 @@
         <div id="audit-list"></div>
       </div>
 
-      <div class="view" id="view-pihole">
+      <div class="view" id="view-pi">
         <div class="page-head">
           <h1>Pi-hole · SSH</h1>
           <p class="lede">DNS stats and remote shell</p>
         </div>
-        <div class="stat-row" id="pihole-stats"></div>
+        <div class="stat-row" id="pi-stats"></div>
         <div class="split">
           <div class="panel">
             <div class="panel-head"><h2>Most blocked domains</h2></div>
-            <div id="pihole-blocked" class="empty">Pi-hole API is not connected yet. Add the API password in Preferences.</div>
+            <div id="pi-dns-blocked" class="empty">Pi-hole API is not connected yet. Add the API password in Preferences.</div>
             <h2 class="subhead">DHCP leases expiring</h2>
-            <div id="pihole-leases" class="empty">Leases appear here once the API or SSH can read them.</div>
+            <div id="pi-leases" class="empty">Leases appear here once the API or SSH can read them.</div>
           </div>
           <div class="panel">
             <div class="panel-head">
               <h2>SSH session</h2>
-              <span class="muted" id="pihole-ssh-target"></span>
+              <span class="muted" id="pi-ssh-target"></span>
             </div>
-            <div id="pihole-host" class="empty">CPU, disk and apt updates appear here once SSH is connected.</div>
-            <div class="btn-row" id="pihole-actions">
-              <button type="button" data-cmd="pihole status">pihole status</button>
-              <button type="button" data-cmd="pihole -g">Update gravity</button>
-              <button type="button" data-cmd="systemctl restart pihole-FTL" class="warn">Restart FTL</button>
-              <button type="button" data-cmd="cat /etc/pihole/dhcp.leases">DHCP leases</button>
-              <button type="button" data-cmd="pihole -c -e">top talkers</button>
+            <div id="pi-host" class="empty">CPU, disk and apt updates appear here once SSH is connected.</div>
+            <div class="btn-row" id="pi-actions">
               <button type="button" data-cmd="vcgencmd measure_temp">CPU temperature</button>
               <button type="button" data-cmd="df -h">Disk space</button>
               <button type="button" data-cmd="apt list --upgradable">Apt updates</button>
             </div>
-            <form id="pihole-form" class="cmd-form">
-              <input type="text" id="pihole-cmd" placeholder="Arbitrary command…" autocomplete="off">
+            <form id="pi-form" class="cmd-form">
+              <input type="text" id="pi-cmd" placeholder="Arbitrary command…" autocomplete="off">
               <button type="submit">Run</button>
             </form>
-            <pre id="pihole-out" class="log"></pre>
+            <pre id="pi-out" class="log"></pre>
           </div>
         </div>
       </div>
@@ -268,11 +263,11 @@
           </div>
         </div>
 
-        <div class="panel" id="pihole-prefs-panel" style="margin-top:20px">
+        <div class="panel" id="pi-prefs-panel" style="margin-top:20px">
           <div class="panel-head"><h2>Pi-hole · SSH</h2></div>
-          <p class="muted" id="pihole-prefs-note">SSH connection settings for the Pi-hole. Saved on this PC and used for shell commands.</p>
+          <p class="muted" id="pi-prefs-note">SSH connection settings for the Pi-hole. Saved on this PC and used for shell commands.</p>
           <div class="prefs-list">
-            <form id="pihole-ssh-form">
+            <form id="pi-ssh-form">
               <div class="pref-row">
                 <div>
                   <div class="pref-label">SSH port</div>
@@ -294,24 +289,24 @@
             <div class="pref-row">
               <div>
                 <div class="pref-label">Remembered host</div>
-                <div class="pref-note" id="pihole-host-note">Not set yet</div>
+                <div class="pref-note" id="pi-host-note">Not set yet</div>
               </div>
-              <span class="muted" id="pihole-host-value">—</span>
+              <span class="muted" id="pi-host-value">—</span>
             </div>
             <div class="pref-row">
               <div>
                 <div class="pref-label">API password</div>
-                <div class="pref-note" id="pihole-api-note">Pi-hole 5 auth token or Pi-hole 6 app password. Stored with OS encryption.</div>
+                <div class="pref-note" id="pi-api-note">Pi-hole 5 auth token or Pi-hole 6 app password. Stored with OS encryption.</div>
               </div>
-              <form id="pihole-api-form" class="inline-form">
-                <input type="password" id="pref-pihole-api" placeholder="Paste password" autocomplete="off">
+              <form id="pi-api-form" class="inline-form">
+                <input type="password" id="pref-pi-api" placeholder="Paste password" autocomplete="off">
                 <button type="submit" class="primary-inline">Save</button>
               </form>
             </div>
             <div class="pref-row">
               <div>
                 <div class="pref-label">SSH private key</div>
-                <div class="pref-note" id="pihole-key-note">OpenSSH key for the Pi. PuTTY .ppk files are not used.</div>
+                <div class="pref-note" id="pi-key-note">OpenSSH key for the Pi. PuTTY .ppk files are not used.</div>
               </div>
               <button type="button" class="secondary" id="pref-ssh-key">Choose key…</button>
             </div>

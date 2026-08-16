@@ -65,12 +65,12 @@ async function saveSshPrefs(opts) {
   const sshPort = portEl.value;
   const sshUser = userEl.value;
   try {
-    const r = await window.meshwatch.pihole.setPrefs({ sshPort, sshUser });
+    const r = await window.meshwatch.pi.setPrefs({ sshPort, sshUser });
     if (r && !r.ok) {
       if (!quiet) toast(r.reason || "Could not save SSH settings");
       return r;
     }
-    if (r && r.state) state.pihole = r.state;
+    if (r && r.state) state.pi = r.state;
     if (!quiet) {
       const now = Date.now();
       if (now - sshSaveToastAt > 800) {
@@ -240,7 +240,7 @@ function go(view) {
   $$(".view").forEach((v) => v.classList.toggle("on", v.id === "view-" + view));
   if (view === "topology") renderTopology();
   if (view === "audit" && !state.audit) runAudit();
-  if (view === "pihole") loadPihole();
+  if (view === "pi") loadPi();
   if (view === "preferences") loadPreferences();
   if (view === "discovery") updateScanChrome();
   hideCtx();
@@ -249,12 +249,20 @@ function go(view) {
   if (view !== "inventory" && view !== "topology") closeDetail();
 }
 
-async function updatePiholeNav() {
+function updatePiTabVisibility() {
+  const nav = $("#nav-pi");
+  const discovered = !!(state.pi && state.pi.discovered);
+  if (nav) nav.hidden = !discovered;
+  if (!discovered && state.view === "pi") go("overview");
+}
+
+async function updatePiNav() {
   let st = { discovered: false };
   try {
-    st = await window.meshwatch.pihole.state();
+    st = await window.meshwatch.pi.state();
   } catch (e) { /* ignore */ }
-  state.pihole = st;
+  state.pi = st;
+  updatePiTabVisibility();
   return st;
 }
 
@@ -593,7 +601,7 @@ function renderTopology() {
 }
 
 async function blockDevice(d, blocked) {
-  const r = await window.meshwatch.pihole.block(d.mac, blocked);
+  const r = await window.meshwatch.pi.block(d.mac, blocked);
   if (r && r.ok) {
     d.blocked = blocked;
     toast(blocked ? (d.name + " blocked via Pi-hole") : (d.name + " unblocked"));
@@ -777,20 +785,20 @@ async function runAudit() {
   }
 }
 
-async function loadPihole() {
-  const stats = $("#pihole-stats");
-  const blocked = $("#pihole-blocked");
-  const host = $("#pihole-host");
-  const leasesEl = $("#pihole-leases");
-  const sshTarget = $("#pihole-ssh-target");
+async function loadPi() {
+  const stats = $("#pi-stats");
+  const blocked = $("#pi-dns-blocked");
+  const host = $("#pi-host");
+  const leasesEl = $("#pi-leases");
+  const sshTarget = $("#pi-ssh-target");
   try {
-    const target = await window.meshwatch.pihole.target();
+    const target = await window.meshwatch.pi.target();
     if (sshTarget) {
       sshTarget.textContent = target && target.host
         ? ((target.user || "admin") + "@" + target.host + " : " + target.port)
         : "not set";
     }
-    const s = await window.meshwatch.pihole.stats();
+    const s = await window.meshwatch.pi.stats();
     state.piStats = s && s.available ? s : null;
     renderOverview();
     if (!s || s.available === false) {
@@ -824,7 +832,7 @@ async function loadPihole() {
       : '<p class="empty">Host metrics via SSH when connected.</p>';
 
     if (leasesEl) {
-      const leases = await window.meshwatch.pihole.leases();
+      const leases = await window.meshwatch.pi.leases();
       leasesEl.innerHTML = (leases && leases.length)
         ? leases.slice(0, 8).map((l) =>
           '<div class="lease-row"><span>' + escapeHtml(l.hostname || l.name || l.ip) +
@@ -838,11 +846,11 @@ async function loadPihole() {
   }
 }
 
-async function runPiholeCmd(command) {
-  const out = $("#pihole-out");
+async function runPiCmd(command) {
+  const out = $("#pi-out");
   out.textContent = "$ " + command + "\n…";
   try {
-    const r = await window.meshwatch.pihole.exec(command);
+    const r = await window.meshwatch.pi.exec(command);
     if (r.cancelled) {
       out.textContent = "Cancelled.";
       toast("Command cancelled");
@@ -1072,16 +1080,14 @@ async function openDetail(d) {
     sec.textContent = "Pi-hole / SSH";
     actions.appendChild(sec);
     for (const [label, cmd] of [
-      ["Open Pi-hole panel", null],
-      ["pihole status", "pihole status"],
-      ["Update gravity", "pihole -g"]
+      ["Open Pi-hole panel", null]
     ]) {
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = label;
       b.addEventListener("click", () => {
-        go("pihole");
-        if (cmd) runPiholeCmd(cmd);
+        go("pi");
+        if (cmd) runPiCmd(cmd);
       });
       actions.appendChild(b);
     }
@@ -1226,27 +1232,27 @@ async function loadPreferences() {
     : "OS encryption unavailable — credential vault disabled.";
   $("#cred-form").style.display = avail ? "" : "none";
 
-  const pi = await updatePiholeNav();
-  const panel = $("#pihole-prefs-panel");
+  const pi = await updatePiNav();
+  const panel = $("#pi-prefs-panel");
   // Always show SSH prefs — port/user are needed before or without a live
   // discovery (this LAN uses a non-default SSH port).
   panel.hidden = false;
   if (pi && pi.sshPort != null && pi.sshPort !== "") $("#pref-ssh-port").value = String(pi.sshPort);
   if (pi && pi.sshUser) $("#pref-ssh-user").value = pi.sshUser;
-  $("#pihole-host-value").textContent = pi && pi.ip
+  $("#pi-host-value").textContent = pi && pi.ip
     ? ((pi.online ? "Online · " : "Last seen · ") + pi.ip + (pi.mac ? " · " + pi.mac : ""))
     : "Not remembered yet — run a scan";
-  $("#pihole-host-note").textContent = pi && pi.remembered
+  $("#pi-host-note").textContent = pi && pi.remembered
     ? "Kept after the first discovery so the Pi-hole panel stays available offline."
     : (pi && pi.discovered ? "Detected on this network." : "Run a scan to remember the Pi-hole host.");
   try {
-    const has = await window.meshwatch.pihole.hasPassword();
-    $("#pihole-api-note").textContent = has
+    const has = await window.meshwatch.pi.hasPassword();
+    $("#pi-api-note").textContent = has
       ? "API password is saved on this PC."
       : "Pi-hole 5 auth token or Pi-hole 6 app password. Stored with OS encryption.";
   } catch (e) { /* ignore */ }
   if (pi && pi.keyPath) {
-    $("#pihole-key-note").textContent = "Using " + pi.keyPath;
+    $("#pi-key-note").textContent = "Using " + pi.keyPath;
   }
 
   const sel = $("#cred-mac");
@@ -1318,7 +1324,7 @@ async function loadDevices() {
   renderOverview();
   renderTopology();
   updateScanChrome();
-  await updatePiholeNav();
+  await updatePiNav();
   if (state.devices.length) {
     setStatus(state.devices.length + " devices from last scan");
     $("#last-scan").textContent = state.devices[0].last_seen
@@ -1360,7 +1366,7 @@ async function startScan() {
       "<span>leases cross-checked against Pi-hole</span>" +
       "<span>" + escapeHtml((state.subnet && state.subnet.cidr) || "") + "</span>";
     toast(state.devices.length + " devices found");
-    await updatePiholeNav();
+    await updatePiNav();
   } catch (e) {
     line("Scan failed: " + e.message, "#ff563c");
     setStatus("Scan failed");
@@ -1440,13 +1446,13 @@ document.addEventListener("click", (e) => {
   if (!ctxEl.hidden && !ctxEl.contains(e.target)) hideCtx();
 });
 
-$$("#pihole-actions button").forEach((b) => {
-  b.addEventListener("click", () => runPiholeCmd(b.dataset.cmd));
+$$("#pi-actions button").forEach((b) => {
+  b.addEventListener("click", () => runPiCmd(b.dataset.cmd));
 });
-$("#pihole-form").addEventListener("submit", (e) => {
+$("#pi-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  const cmd = $("#pihole-cmd").value.trim();
-  if (cmd) runPiholeCmd(cmd);
+  const cmd = $("#pi-cmd").value.trim();
+  if (cmd) runPiCmd(cmd);
 });
 
 if (window.meshwatch.onUpdateStatus) {
@@ -1534,7 +1540,7 @@ $("#pref-theme").addEventListener("change", () => {
   applyTheme(state.prefs.theme);
 });
 
-const sshForm = $("#pihole-ssh-form");
+const sshForm = $("#pi-ssh-form");
 if (sshForm) {
   sshForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1546,25 +1552,25 @@ if (sshForm) {
   if (el) el.addEventListener("change", () => { saveSshPrefs(); });
 });
 
-const apiForm = $("#pihole-api-form");
+const apiForm = $("#pi-api-form");
 if (apiForm) {
   apiForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     await saveSshPrefs({ quiet: true });
-    const password = $("#pref-pihole-api").value;
-    const r = await window.meshwatch.pihole.setPassword(password);
+    const password = $("#pref-pi-api").value;
+    const r = await window.meshwatch.pi.setPassword(password);
     if (r && r.ok) {
-      $("#pref-pihole-api").value = "";
+      $("#pref-pi-api").value = "";
       toast("Pi-hole API password saved");
       loadPreferences();
-      loadPihole();
+      loadPi();
     } else toast((r && r.reason) || "Could not save API password");
   });
 }
 const keyBtn = $("#pref-ssh-key");
 if (keyBtn) {
   keyBtn.addEventListener("click", async () => {
-    const r = await window.meshwatch.pihole.pickKey();
+    const r = await window.meshwatch.pi.pickKey();
     if (r && r.ok) {
       toast("Using SSH key " + r.path);
       loadPreferences();
@@ -1579,7 +1585,7 @@ loadDevices().then(async () => {
     if (remote) state.prefs = Object.assign(state.prefs, remote);
   } catch (e) { /* ignore */ }
   try {
-    state.piStats = await window.meshwatch.pihole.stats();
+    state.piStats = await window.meshwatch.pi.stats();
     if (state.piStats && state.piStats.available === false) state.piStats = null;
   } catch (e) { state.piStats = null; }
   renderOverview();
@@ -1588,7 +1594,7 @@ loadDevices().then(async () => {
 if (window.meshwatch.onScanFinished) {
   window.meshwatch.onScanFinished(() => {
     loadDevices();
-    loadPihole();
+    loadPi();
   });
 }
 window.meshwatch.versions().then((v) => {

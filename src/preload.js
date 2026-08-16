@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld("meshwatch", {
 
   version: () => ipcRenderer.invoke("app:version"),
   versions: () => ipcRenderer.invoke("app:versions"),
+  setTheme: (theme) => ipcRenderer.invoke("app:theme", { theme }),
   checkForUpdate: () => ipcRenderer.invoke("update:check"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
   onUpdateStatus: (cb) => {

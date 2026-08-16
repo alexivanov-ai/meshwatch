@@ -30,18 +30,36 @@ let toastTimer = null;
 function loadPrefs() {
   try {
     return Object.assign(
-      { showOffline: true, autoScan: false },
+      { showOffline: true, autoScan: false, theme: "system" },
       JSON.parse(localStorage.getItem(PREFS_KEY) || "{}")
     );
   } catch (e) {
-    return { showOffline: true, autoScan: false };
+    return { showOffline: true, autoScan: false, theme: "system" };
   }
+}
+
+function resolveTheme(pref) {
+  const mode = pref || "system";
+  if (mode === "light" || mode === "dark") return mode;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(pref) {
+  const choice = pref || (state.prefs && state.prefs.theme) || "system";
+  const resolved = resolveTheme(choice);
+  document.documentElement.dataset.theme = resolved;
+  if (window.meshwatch && window.meshwatch.setTheme) {
+    window.meshwatch.setTheme(choice).catch(() => {});
+  }
+  return resolved;
 }
 
 function savePrefs() {
   state.prefs.showOffline = $("#pref-offline").checked;
   state.prefs.autoScan = $("#pref-autoscan").checked;
+  state.prefs.theme = $("#pref-theme").value || "system";
   localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
+  applyTheme(state.prefs.theme);
 
   const sshPort = $("#pref-ssh-port").value;
   const sshUser = $("#pref-ssh-user").value;
@@ -1032,6 +1050,7 @@ function exportCsv() {
 async function loadPreferences() {
   $("#pref-offline").checked = !!state.prefs.showOffline;
   $("#pref-autoscan").checked = !!state.prefs.autoScan;
+  $("#pref-theme").value = state.prefs.theme || "system";
   const avail = await window.meshwatch.credentials.available();
   $("#cred-status").textContent = avail
     ? "OS-backed encryption available. Passwords never leave this machine."
@@ -1324,6 +1343,18 @@ window.meshwatch.browser.on("needBounds", () => reportBrowserBounds());
 
 $("#pref-offline").checked = !!state.prefs.showOffline;
 $("#pref-autoscan").checked = !!state.prefs.autoScan;
+$("#pref-theme").value = state.prefs.theme || "system";
+applyTheme(state.prefs.theme);
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if ((state.prefs.theme || "system") === "system") applyTheme("system");
+});
+
+$("#pref-theme").addEventListener("change", () => {
+  state.prefs.theme = $("#pref-theme").value || "system";
+  localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
+  applyTheme(state.prefs.theme);
+});
 
 refreshHeader();
 loadDevices().then(() => {

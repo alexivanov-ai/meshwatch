@@ -5,6 +5,19 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
 <title>Meshwatch</title>
 <link rel="stylesheet" href="styles.css">
+<script>
+  // Apply theme before first paint to avoid a light→dark flash.
+  (function () {
+    try {
+      var prefs = JSON.parse(localStorage.getItem("meshwatch.prefs") || "{}");
+      var mode = prefs.theme || "system";
+      var dark = mode === "dark" || (mode !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    } catch (e) {
+      document.documentElement.dataset.theme = "light";
+    }
+  })();
+</script>
 </head>
 <body>
   <header>
@@ -154,6 +167,17 @@
           <p class="lede">Scanning, credentials and alerts</p>
         </div>
         <div class="prefs-list">
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Appearance</div>
+              <div class="pref-note">Light, dark, or match Windows / macOS</div>
+            </div>
+            <select id="pref-theme" aria-label="Appearance">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
           <div class="pref-row">
             <div>
               <div class="pref-label">Show offline devices</div>

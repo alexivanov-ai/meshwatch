@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme } = require("electron");
 const path = require("path");
 const db = require("./db");
 const discovery = require("./discovery");
@@ -11,13 +11,30 @@ const browser = require("./browser");
 
 let win = null;
 
+const THEME_BG = { light: "#f3f2f2", dark: "#161514" };
+
+function resolvedTheme(theme) {
+  const mode = theme === "light" || theme === "dark" ? theme : "system";
+  if (mode === "light" || mode === "dark") return mode;
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
+
+function applyNativeTheme(theme) {
+  const mode = theme === "light" || theme === "dark" ? theme : "system";
+  nativeTheme.themeSource = mode;
+  if (win && !win.isDestroyed()) {
+    win.setBackgroundColor(THEME_BG[resolvedTheme(mode)]);
+  }
+  return { ok: true, theme: mode, resolved: resolvedTheme(mode) };
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1480,
     height: 960,
     minWidth: 1100,
     minHeight: 700,
-    backgroundColor: "#f3f2f2",
+    backgroundColor: THEME_BG[resolvedTheme("system")],
     title: "Meshwatch",
     icon: path.join(__dirname, "..", "..", "build", process.platform === "win32" ? "icon.ico" : "icon.png"),
     webPreferences: {
@@ -121,6 +138,7 @@ ipcMain.handle("credentials:save", (_e, { mac, label, username, password }) => c
 ipcMain.handle("credentials:list", () => credentials.list());
 ipcMain.handle("credentials:has", (_e, { mac }) => credentials.has(mac));
 ipcMain.handle("credentials:remove", (_e, { mac }) => credentials.remove(mac));
+ipcMain.handle("app:theme", (_e, { theme }) => applyNativeTheme(theme));
 
 // In-app Chromium (Electron) — device admin pages stay inside Meshwatch.
 ipcMain.handle("browser:open", (_e, { url }) => browser.open(url));

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Tray, Menu, Notification, nativeImage } = require("electron");
 const path = require("path");
 const db = require("./db");
 const discovery = require("./discovery");
@@ -10,8 +10,15 @@ const updater = require("./updater");
 const browser = require("./browser");
 
 let win = null;
+let tray = null;
+let scanTimer = null;
+let scanning = false;
 
 const THEME_BG = { light: "#f3f2f2", dark: "#161514" };
+
+function iconPath() {
+  return path.join(__dirname, "..", "..", "build", process.platform === "win32" ? "icon.ico" : "icon.png");
+}
 
 function resolvedTheme(theme) {
   const mode = theme === "light" || theme === "dark" ? theme : "system";
@@ -28,15 +35,50 @@ function applyNativeTheme(theme) {
   return { ok: true, theme: mode, resolved: resolvedTheme(mode) };
 }
 
+function showWindow() {
+  if (!win || win.isDestroyed()) createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function notify(title, body) {
+  const prefs = db.getPrefs();
+  if (!prefs.notifyNewDevice && title.indexOf("new") === -1) {
+    /* still allow watch alerts */
+  }
+  if (!Notification.isSupported()) return;
+  try {
+    new Notification({ title, body, icon: iconPath() }).show();
+  } catch (e) { /* ignore */ }
+}
+
+function createTray() {
+  if (tray) return;
+  let image = nativeImage.createFromPath(iconPath());
+  if (image.isEmpty()) image = nativeImage.createEmpty();
+  tray = new Tray(image.resize({ width: 16, height: 16 }));
+  tray.setToolTip("Meshwatch");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Meshwatch", click: () => showWindow() },
+    { label: "Scan network now", click: () => runScan("tray") },
+    { type: "separator" },
+    { label: "Quit", click: () => { app.quit(); } }
+  ]));
+  tray.on("click", () => showWindow());
+}
+
 function createWindow() {
+  const hidden = process.argv.indexOf("--hidden") !== -1;
   win = new BrowserWindow({
     width: 1480,
     height: 960,
     minWidth: 1100,
     minHeight: 700,
+    show: !hidden,
     backgroundColor: THEME_BG[resolvedTheme("system")],
     title: "Meshwatch",
-    icon: path.join(__dirname, "..", "..", "build", process.platform === "win32" ? "icon.ico" : "icon.png"),
+    icon: iconPath(),
     webPreferences: {
       preload: path.join(__dirname, "..", "preload.js"),
       contextIsolation: true,
@@ -47,40 +89,106 @@ function createWindow() {
   win.removeMenu();
   browser.attach(win);
   win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+  win.on("close", (e) => {
+    if (process.platform === "darwin") return;
+    if (!app.isQuitting) {
+      e.preventDefault();
+      win.hide();
+    }
+  });
+}
+
+function applyLoginItem(prefs) {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!prefs.startWithSystem,
+      args: ["--hidden"]
+    });
+  } catch (e) { /* ignore on unsigned builds */ }
+}
+
+function scheduleScans() {
+  if (scanTimer) {
+    clearInterval(scanTimer);
+    scanTimer = null;
+  }
+  const mins = Number((db.getPrefs() || {}).scanIntervalMin);
+  if (!mins || mins < 1) return;
+  scanTimer = setInterval(() => runScan("interval"), Math.max(1, mins) * 60 * 1000);
+}
+
+function send(channel, payload) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+const progress = (stage, detail) => send("scan:progress", { stage, detail });
+
+async function runScan(reason) {
+  if (scanning) return { ok: false, reason: "already scanning" };
+  scanning = true;
+  send("scan:started", { reason });
+  try {
+    const before = new Set(db.listDevices().map((d) => d.mac));
+    const devices = await discovery.run({ onProgress: progress });
+    db.recordScan(devices);
+    const after = db.listDevices();
+    const prefs = db.getPrefs();
+    const newcomers = after.filter((d) => !before.has(d.mac));
+    if (prefs.notifyNewDevice && before.size && newcomers.length) {
+      const names = newcomers.map((d) => d.name || d.ip).slice(0, 3).join(", ");
+      notify("New device on the network", names + (newcomers.length > 3 ? " +" + (newcomers.length - 3) : ""));
+    }
+    for (const d of after) {
+      if (d.watched && !before.has(d.mac)) notify(d.name + " joined", d.ip || d.mac);
+    }
+    const seenNow = new Set(devices.map((d) => d.mac));
+    for (const d of after) {
+      if (d.watched && before.has(d.mac) && !seenNow.has(d.mac)) {
+        notify(d.name + " left", "Not seen on this sweep");
+      }
+    }
+    send("scan:finished", { count: after.length, newDevices: newcomers.length });
+    return after;
+  } finally {
+    scanning = false;
+  }
 }
 
 app.whenReady().then(() => {
   db.init();
+  const prefs = db.getPrefs();
+  applyNativeTheme(prefs.theme || "system");
+  applyLoginItem(prefs);
   createWindow();
+  createTray();
+  scheduleScans();
   updater.setup();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
+app.on("before-quit", () => { app.isQuitting = true; });
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    // Stay in the tray.
+  }
 });
 
-// --- IPC -------------------------------------------------------------------
+const findDevice = (ip) => db.listDevices().find((d) => d.ip === ip) || null;
+const findByMac = (mac) => db.listDevices().find((d) => d.mac === mac) || null;
 
-const progress = (stage, detail) => {
-  if (win && !win.isDestroyed()) win.webContents.send("scan:progress", { stage, detail });
-};
-
-ipcMain.handle("scan:run", async () => {
-  const devices = await discovery.run({ onProgress: progress });
-  db.recordScan(devices);
-  // Return DB rows so user renames (name_override) are applied.
-  return db.listDevices();
-});
-
+ipcMain.handle("scan:run", () => runScan("manual"));
 ipcMain.handle("devices:list", () => db.listDevices());
 ipcMain.handle("devices:topology", () => discovery.topology(db.listDevices()));
 ipcMain.handle("devices:drift", () => discovery.detectDrift(db.listDevices()));
 ipcMain.handle("devices:note", (_e, { mac, note }) => db.setNote(mac, note));
 ipcMain.handle("devices:rename", (_e, { mac, name }) => db.setNameOverride(mac, name));
 ipcMain.handle("devices:firmwareManual", (_e, { mac, version }) => db.setFirmwareManual(mac, version));
+ipcMain.handle("devices:watch", (_e, { mac, watched }) => {
+  db.setWatched(mac, !!watched);
+  return { ok: true };
+});
 ipcMain.handle("audit:run", async () => audit.run(db.listDevices()));
 ipcMain.handle("audit:dismiss", (_e, { key }) => audit.dismiss(key));
 ipcMain.handle("audit:restore", (_e, { key }) => audit.restore(key));
@@ -89,9 +197,20 @@ ipcMain.handle("credentials:available", () => credentials.available());
 ipcMain.handle("pihole:state", () => db.getPiHoleState());
 ipcMain.handle("pihole:prefs", (_e, prefs) => db.setPiHolePrefs(prefs || {}));
 ipcMain.handle("pihole:target", () => pihole.resolveTarget());
-
 ipcMain.handle("pihole:stats", () => pihole.stats());
 ipcMain.handle("pihole:leases", () => pihole.leases());
+ipcMain.handle("pihole:hasPassword", () => pihole.hasApiPassword());
+ipcMain.handle("pihole:setPassword", (_e, { password }) => pihole.setApiPassword(password));
+ipcMain.handle("pihole:pickKey", async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: "Pi-hole SSH private key",
+    properties: ["openFile"],
+    filters: [{ name: "OpenSSH private key", extensions: ["", "pem", "key", "pub"] }]
+  });
+  if (r.canceled || !r.filePaths[0]) return { ok: false, cancelled: true };
+  db.setSetting("pihole_ssh_key", r.filePaths[0]);
+  return { ok: true, path: r.filePaths[0] };
+});
 ipcMain.handle("pihole:exec", async (_e, { command }) => {
   if (pihole.isDisruptive(command)) {
     const { response } = await dialog.showMessageBox(win, {
@@ -107,11 +226,13 @@ ipcMain.handle("pihole:exec", async (_e, { command }) => {
   }
   return pihole.exec(command);
 });
-
-// tplink.js has no static config to look devices up by IP against anymore
-// (config/devices.json carries no per-device IP) - resolve against the last
-// scan's results here instead.
-const findDevice = (ip) => db.listDevices().find(d => d.ip === ip) || null;
+ipcMain.handle("pihole:block", async (_e, { mac, blocked }) => {
+  const d = findByMac(mac);
+  if (!d || !d.ip) return { ok: false, reason: "device has no address" };
+  const r = await pihole.blockClient(d.ip, { blocked: blocked !== false });
+  if (r && r.ok) db.setBlocked(mac, blocked !== false);
+  return r;
+});
 
 ipcMain.handle("tplink:capabilities", (_e, { ip }) => tplink.capabilities(findDevice(ip)));
 ipcMain.handle("tplink:action", async (_e, { ip, action, args }) => {
@@ -131,16 +252,19 @@ ipcMain.handle("tplink:action", async (_e, { ip, action, args }) => {
   return tplink.action(device, action, args);
 });
 
-// Metadata only (label/username/when-saved) - never the password. The
-// plaintext only ever gets decrypted inside the main process, for scripting
-// a form-fill into the in-app browser (see credentials.js / browser.js).
 ipcMain.handle("credentials:save", (_e, { mac, label, username, password }) => credentials.save(mac, { label, username, password }));
 ipcMain.handle("credentials:list", () => credentials.list());
 ipcMain.handle("credentials:has", (_e, { mac }) => credentials.has(mac));
 ipcMain.handle("credentials:remove", (_e, { mac }) => credentials.remove(mac));
 ipcMain.handle("app:theme", (_e, { theme }) => applyNativeTheme(theme));
+ipcMain.handle("prefs:get", () => db.getPrefs());
+ipcMain.handle("prefs:set", (_e, patch) => {
+  const r = db.setPrefs(patch);
+  applyLoginItem(r.prefs);
+  scheduleScans();
+  return r;
+});
 
-// In-app Chromium (Electron) — device admin pages stay inside Meshwatch.
 ipcMain.handle("browser:open", (_e, { url }) => browser.open(url));
 ipcMain.handle("browser:close", () => browser.close());
 ipcMain.handle("browser:back", () => browser.back());
@@ -148,13 +272,10 @@ ipcMain.handle("browser:forward", () => browser.forward());
 ipcMain.handle("browser:reload", () => browser.reload());
 ipcMain.handle("browser:bounds", (_e, bounds) => browser.setBounds(bounds));
 ipcMain.handle("browser:url", () => browser.getUrl());
-
-// Kept for rare cases that truly need the OS browser — still LAN-only.
 ipcMain.handle("shell:open", (_e, { url }) => {
   if (!browser.isLanUrl(url)) return { ok: false, reason: "not a local address" };
   return browser.open(url);
 });
-
 ipcMain.handle("update:check", () => updater.checkNow());
 ipcMain.handle("update:install", () => updater.installNow());
 ipcMain.handle("app:version", () => app.getVersion());

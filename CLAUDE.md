@@ -134,14 +134,14 @@ listed above, nothing built on top of it matters.
 - [x] Phase 1 - Discovery engine: ping sweep + ARP table, mDNS, SSDP, DNS PTR,
   NetBIOS, web probe, SNMP sysName/sysDescr, OS subnet + default-gateway
   detection, config-drift check, local credential vault, user device renames.
-  DHCP leases wiring is a real stub pending phase 2's Pi-hole credentials.
-- [ ] Phase 2 - Pi-hole: REST stats, SSH console on port 2222
-- [ ] Phase 3 - TP-Link control. Research feasibility and report before coding
-- [ ] Phase 4 - Security audit: firmware age, open ports, config weaknesses
+  DHCP leases come from the Pi-hole API (or SSH `dhcp.leases`) once credentials are saved.
+- [x] Phase 2 - Pi-hole: REST stats, SSH console on a user-set port
+- [x] Phase 3 - TP-Link control. Local web API where a password is saved; otherwise the in-app admin page
+- [x] Phase 4 - Security audit: firmware from device APIs, open ports, config weaknesses
 - [x] Phase 5 - Rebuild the UI to match `design/Network Dashboard.dc.html`
   (overview, inventory with filters/click/context menu, topology, audit,
   Pi-hole, Discovery progress, Preferences + credential vault + CSV export)
-- [ ] Phase 6 - Installers: NSIS on Windows, dmg on macOS (auto-update wired)
+- [x] Phase 6 - Installers: NSIS on Windows (dmg is macOS-only and built on a Mac)
 
 The copy-paste prompt for each phase is in `PROMPTS.md`.
 

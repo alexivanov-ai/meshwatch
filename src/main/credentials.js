@@ -59,4 +59,36 @@ function remove(mac) {
   return db.removeCredential(mac);
 }
 
-module.exports = { available, save, list, has, reveal, remove };
+// App-level secrets (Pi-hole API password, etc.) — still OS-encrypted,
+// stored as base64 ciphertext in the settings table, never in the repo.
+function setAppSecret(key, value) {
+  if (!available()) return { ok: false, reason: "OS-level credential encryption isn't available on this machine" };
+  if (!key) return { ok: false, reason: "missing key" };
+  if (value == null || value === "") {
+    db.setSetting("secret:" + key, null);
+    return { ok: true };
+  }
+  const enc = safeStorage.encryptString(String(value));
+  db.setSetting("secret:" + key, Buffer.from(enc).toString("base64"));
+  return { ok: true };
+}
+
+function getAppSecret(key) {
+  const b64 = db.getSetting("secret:" + key);
+  if (!b64) return null;
+  try {
+    return safeStorage.decryptString(Buffer.from(b64, "base64"));
+  } catch (e) {
+    return null;
+  }
+}
+
+function deleteAppSecret(key) {
+  db.setSetting("secret:" + key, null);
+  return { ok: true };
+}
+
+module.exports = {
+  available, save, list, has, reveal, remove,
+  setAppSecret, getAppSecret, deleteAppSecret
+};

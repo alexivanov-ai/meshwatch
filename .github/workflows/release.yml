@@ -85,6 +85,9 @@ jobs:
       - name: Download Electron binary
         run: node scripts/ensure-electron.js
 
+      - name: Rebuild Windows icon
+        run: node scripts/make-icon.js
+
       - name: Build Windows installer
         # electron-builder detects CI and defaults to trying its own GitHub
         # publish step, which needs GH_TOKEN we don't set - we publish

@@ -101,6 +101,68 @@ nav {
   overflow-y: auto;
 }
 nav .spacer { flex: 1; min-height: 12px; }
+.nav-home {
+  padding: 16px 16px 14px;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 8px;
+}
+.nav-home-title { font-weight: 800; font-size: 19px; line-height: 1.1; margin-top: 4px; }
+.nav-home-counts { display: flex; gap: 6px; margin-top: 10px; font-size: 11px; }
+.nav-home-counts span {
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+}
+.nav-home-counts span:last-child { opacity: 0.6; }
+h2.subhead {
+  margin: 22px 0 10px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.talker { padding: 10px 0; border-top: 1px solid var(--rule); }
+.talker-top { display: flex; justify-content: space-between; font-size: 13px; gap: 12px; }
+.talker-name { font-weight: 600; }
+.talker-amt { opacity: 0.7; font-variant-numeric: tabular-nums; }
+.talker-track { height: 6px; background: var(--track); margin-top: 6px; }
+.talker-fill { height: 6px; background: var(--ink); }
+.node-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 10px 0; border-top: 1px solid var(--rule); font-size: 13px;
+}
+.cell-main { display: block; font-weight: 600; }
+.cell-sub { display: block; font-size: 11px; opacity: 0.55; }
+.device-cell { display: flex; align-items: center; gap: 10px; }
+.inline-form { display: flex; gap: 8px; align-items: center; }
+.inline-form input {
+  width: 160px;
+  border: 2px solid var(--line);
+  background: var(--bg);
+  padding: 8px 10px;
+}
+#pref-interval, #pref-ports {
+  width: 200px;
+  border: 2px solid var(--line);
+  background: var(--bg);
+  padding: 8px 10px;
+}
+.attention-btn {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  padding: 13px 0;
+  display: grid;
+  grid-template-columns: 6px 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+.attention-btn:hover { background: var(--hover); }
+.attention-mark { width: 6px; height: 26px; background: var(--accent); }
+.lease-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-top: 1px solid var(--rule); font-size: 13px;
+}
 nav .badge {
   display: inline-block;
   min-width: 1.4em;

@@ -18,7 +18,8 @@ const state = {
   lastScanAt: null,
   scanning: false,
   scanProgress: 0,
-  auditFilter: "all", // all | critical | high | medium | low | dismissed
+  auditFilter: "all",
+  piStats: null,
   prefs: loadPrefs()
 };
 
@@ -58,8 +59,14 @@ function savePrefs() {
   state.prefs.showOffline = $("#pref-offline").checked;
   state.prefs.autoScan = $("#pref-autoscan").checked;
   state.prefs.theme = $("#pref-theme").value || "system";
+  state.prefs.scanIntervalMin = Number($("#pref-interval").value || 15);
+  state.prefs.notifyNewDevice = $("#pref-notify").checked;
+  state.prefs.startWithSystem = $("#pref-startup").checked;
+  state.prefs.deepPortScan = $("#pref-ports").value || "weekly";
+  state.prefs.firmwareSync = $("#pref-firmware").checked;
   localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
   applyTheme(state.prefs.theme);
+  window.meshwatch.prefs.set(state.prefs).catch(() => {});
 
   const sshPort = $("#pref-ssh-port").value;
   const sshUser = $("#pref-ssh-user").value;
@@ -206,9 +213,6 @@ function childCount(mac) {
 }
 
 function go(view) {
-  if (view === "pihole" && $("#nav-pihole").hidden) {
-    view = "overview";
-  }
   state.view = view;
   $$(".nav").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
   $$(".view").forEach((v) => v.classList.toggle("on", v.id === "view-" + view));
@@ -229,16 +233,13 @@ async function updatePiholeNav() {
     st = await window.meshwatch.pihole.state();
   } catch (e) { /* ignore */ }
   state.pihole = st;
-  const nav = $("#nav-pihole");
-  nav.hidden = !st.discovered;
-  if (!st.discovered && state.view === "pihole") go("overview");
   return st;
 }
 
 $$(".nav").forEach((btn) => btn.addEventListener("click", () => go(btn.dataset.view)));
 $$("[data-goto]").forEach((btn) => btn.addEventListener("click", () => go(btn.dataset.goto)));
 
-const CHIPS = ["All", "Online", "Gateway", "Switch", "Access point", "Client", "Estimated"];
+const CHIPS = ["All", "TP-Link", "Infrastructure", "Needs update", "No API", "Clients"];
 
 function renderChips() {
   const row = $("#inventory-chips");
@@ -257,27 +258,37 @@ function renderChips() {
   }
 }
 
+function isInfra(d) {
+  return ["gateway", "switch", "access-point", "extender", "dns-dhcp", "legacy-router"].indexOf(d.type) !== -1;
+}
+
 function filteredDevices() {
   const q = state.query.trim().toLowerCase();
   let list = state.devices.slice().sort(ipSort);
 
   if (!state.prefs.showOffline) list = list.filter(isOnline);
 
-  if (state.chip === "Online") list = list.filter(isOnline);
-  else if (state.chip === "Gateway") list = list.filter((d) => d.type === "gateway");
-  else if (state.chip === "Switch") list = list.filter((d) => d.type === "switch");
-  else if (state.chip === "Access point") {
-    list = list.filter((d) => d.type === "access-point" || d.type === "extender");
-  } else if (state.chip === "Estimated") list = list.filter((d) => d.estimated);
-  else if (state.chip === "Client") {
-    list = list.filter((d) => !d.type || !["gateway", "switch", "access-point", "extender", "dns-dhcp", "legacy-router"].includes(d.type));
-  }
+  if (state.chip === "TP-Link") list = list.filter((d) => d.control === "tplink" || /tp-?link/i.test(d.vendor || ""));
+  else if (state.chip === "Infrastructure") list = list.filter(isInfra);
+  else if (state.chip === "Needs update") {
+    list = list.filter((d) => {
+      const r = deviceRisk(d);
+      return r === "critical" || r === "high";
+    });
+  } else if (state.chip === "No API") list = list.filter((d) => d.estimated || d.control === "none");
+  else if (state.chip === "Clients") list = list.filter((d) => !isInfra(d));
 
   if (!q) return list;
   return list.filter((d) => {
     const hay = [d.name, d.ip, d.mac, d.vendor, d.model, d.type, firmwareOf(d), (d.methods || []).join(" ")].join(" ").toLowerCase();
     return hay.indexOf(q) !== -1;
   });
+}
+
+function stackedTd(main, sub) {
+  const td = document.createElement("td");
+  td.innerHTML = '<span class="cell-main">' + escapeHtml(main || "—") + '</span><span class="cell-sub">' + escapeHtml(sub || "—") + "</span>";
+  return td;
 }
 
 function renderInventory() {
@@ -292,45 +303,27 @@ function renderInventory() {
     tr.dataset.mac = d.mac;
     if (d.mac === state.selectedMac) tr.classList.add("selected");
 
-    const nameCell = document.createElement("td");
-    nameCell.textContent = d.name || "Unidentified host";
-    if (d.estimated) {
-      const est = document.createElement("span");
-      est.className = "est";
-      est.textContent = "estimate";
-      nameCell.appendChild(est);
-    }
-    if (d.nameOverride || d.name_override) {
-      const custom = document.createElement("span");
-      custom.className = "est";
-      custom.textContent = "renamed";
-      nameCell.appendChild(custom);
-    }
-    tr.appendChild(nameCell);
+    const online = isOnline(d);
+    const nameTd = document.createElement("td");
+    nameTd.innerHTML =
+      '<span class="device-cell"><span class="status-dot' + (online ? "" : " off") + '"></span><span>' +
+      '<span class="cell-main">' + escapeHtml(d.name || "Unidentified host") + "</span>" +
+      '<span class="cell-sub">' + escapeHtml(d.vendor || "—") +
+      (d.estimated ? " · estimate" : "") +
+      ((d.nameOverride || d.name_override) ? " · renamed" : "") +
+      "</span></span></span>";
+    tr.appendChild(nameTd);
 
     const risk = deviceRisk(d);
-    const online = isOnline(d);
-    const cells = [
-      d.ip,
-      d.mac,
-      d.vendor || "—",
-      roleLabel(d.type),
-      firmwareOf(d),
-      null,
-      null
-    ];
-    for (let i = 0; i < 5; i++) {
-      const td = document.createElement("td");
-      td.textContent = cells[i] == null || cells[i] === "" ? "—" : cells[i];
-      tr.appendChild(td);
-    }
+    const control = d.control === "tplink" ? "Local API" : (d.control === "ssh" ? "SSH" : (d.control === "readonly" ? "Read only" : (d.estimated ? "No API" : "View")));
+    tr.appendChild(stackedTd(roleLabel(d.type), control));
+    tr.appendChild(stackedTd(d.ip, d.mac));
+    tr.appendChild(stackedTd(parentName(d) || "—", d.link || (online ? "—" : "off")));
+    tr.appendChild(stackedTd(firmwareOf(d), d.firmware_source || d.firmwareSource || "—"));
+
     const riskTd = document.createElement("td");
     riskTd.innerHTML = '<span class="risk ' + risk + '">' + risk + "</span>";
     tr.appendChild(riskTd);
-
-    const stTd = document.createElement("td");
-    stTd.innerHTML = '<span class="status-dot' + (online ? "" : " off") + '"></span>' + (online ? "Online" : "Not seen");
-    tr.appendChild(stTd);
 
     tr.addEventListener("click", () => openDetail(d));
     tr.addEventListener("contextmenu", (e) => {
@@ -343,7 +336,7 @@ function renderInventory() {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 8;
+    td.colSpan = 6;
     td.className = "empty";
     td.textContent = state.devices.length ? "No devices match this filter." : "No devices yet — run a scan.";
     tr.appendChild(td);
@@ -353,21 +346,32 @@ function renderInventory() {
 
 function renderOverview() {
   const online = state.devices.filter(isOnline).length;
-  const estimated = state.devices.filter((d) => d.estimated).length;
-  const withWeb = state.devices.filter((d) => d.web_reachable || (d.web && d.web.reachable)).length;
-  const gw = state.devices.find((d) => d.type === "gateway");
+  const offline = Math.max(0, state.devices.length - online);
+  const navOn = $("#nav-online");
+  const navOff = $("#nav-offline");
+  if (navOn) navOn.textContent = online + " online";
+  if (navOff) navOff.textContent = offline + " off";
+
+  const findings = (state.audit && state.audit.findings) || [];
+  const behind = state.devices.filter((d) => {
+    const fw = firmwareOf(d);
+    const latest = d.firmware_latest || d.firmwareLatest;
+    return (latest && fw && fw !== "—" && fw !== latest) || d.estimated;
+  }).length;
+  const crit = findings.filter((f) => f.severity === "critical").length;
+  const dns = state.piStats && state.piStats.blockedPercent != null
+    ? Math.round(state.piStats.blockedPercent) + "%"
+    : "—";
 
   $("#overview-stats").innerHTML = [
-    ["Online", online],
-    ["Devices", state.devices.length],
-    ["Estimated IDs", estimated],
-    ["Web admin", withWeb],
-    ["Gateway", gw ? gw.name : "—"]
-  ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
+    ["Devices seen", state.devices.length, online + " responding now"],
+    ["Behind or unverifiable", behind, "no firmware API or behind"],
+    ["Critical findings", crit, "need action"],
+    ["DNS queries blocked", dns, state.piStats && state.piStats.blockedToday != null ? state.piStats.blockedToday + " today" : "Pi-hole when connected"]
+  ].map(([l, n, note]) => '<div class="stat"><div class="l">' + escapeHtml(l) + '</div><div class="n">' + escapeHtml(String(n)) + '</div><div class="cell-sub">' + escapeHtml(note) + "</div></div>").join("");
 
   const attn = $("#overview-attention");
   attn.textContent = "";
-  const findings = (state.audit && state.audit.findings) || [];
   const top = findings.filter((f) => f.severity === "critical" || f.severity === "high").slice(0, 5);
   const drift = state.drift || [];
 
@@ -375,13 +379,19 @@ function renderOverview() {
     attn.innerHTML = '<p class="empty">Nothing urgent. Run Security audit after a scan.</p>';
   } else {
     for (const f of top) {
-      const div = document.createElement("div");
-      div.className = "finding";
-      div.innerHTML =
-        '<span class="sev ' + f.severity + '">' + escapeHtml(f.severity) + "</span>" +
-        "<div><h3>" + escapeHtml(f.title) + "</h3>" +
-        '<span class="meta">' + escapeHtml((f.device || "") + " · " + (f.ip || "")) + "</span></div>";
-      attn.appendChild(div);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "attention-btn";
+      btn.innerHTML =
+        '<span class="attention-mark"></span><span><span class="cell-main">' + escapeHtml(f.device || "Device") + "</span>" +
+        '<span class="cell-sub">' + escapeHtml(f.title) + "</span></span>" +
+        '<span class="risk ' + escapeHtml(f.severity) + '">' + escapeHtml(f.severity) + "</span>";
+      btn.addEventListener("click", () => {
+        const d = state.devices.find((x) => x.mac === f.mac);
+        go("inventory");
+        if (d) openDetail(d);
+      });
+      attn.appendChild(btn);
     }
     for (const w of drift) {
       const div = document.createElement("div");
@@ -391,6 +401,39 @@ function renderOverview() {
         "<div><h3>" + escapeHtml(w.knownName + " missing") + "</h3>" +
         "<p>" + escapeHtml(w.detail) + "</p></div>";
       attn.appendChild(div);
+    }
+  }
+
+  const talkersEl = $("#overview-talkers");
+  const talkers = (state.piStats && state.piStats.talkers) || [];
+  if (talkersEl) {
+    if (!talkers.length) {
+      talkersEl.innerHTML = '<p class="empty">Connect Pi-hole in Preferences to see who is querying DNS.</p>';
+    } else {
+      const max = Math.max.apply(null, talkers.map((t) => Number(t.queries) || 0)) || 1;
+      talkersEl.innerHTML = talkers.slice(0, 5).map((t) => {
+        const w = Math.round((Number(t.queries) || 0) / max * 100);
+        return '<div class="talker"><div class="talker-top"><span class="talker-name">' + escapeHtml(t.name || t.ip || "host") +
+          '</span><span class="talker-amt">' + escapeHtml(String(t.queries)) + ' queries</span></div>' +
+          '<div class="talker-track"><div class="talker-fill" style="width:' + w + '%"></div></div></div>';
+      }).join("");
+    }
+  }
+
+  const nodesEl = $("#overview-nodes");
+  const nodes = state.devices.filter(isInfra).map((d) => ({
+    name: d.name,
+    n: childCount(d.mac),
+    est: d.estimated
+  })).filter((n) => n.n > 0).sort((a, b) => b.n - a.n);
+  if (nodesEl) {
+    if (!nodes.length) {
+      nodesEl.innerHTML = '<p class="empty">Run a scan. Counts come from who hangs off whom.</p>';
+    } else {
+      nodesEl.innerHTML = nodes.slice(0, 6).map((n) =>
+        '<div class="node-row"><span>' + escapeHtml(n.name) + "</span><span>" + n.n + " client" + (n.n === 1 ? "" : "s") +
+        (n.est ? " · est." : "") + "</span></div>"
+      ).join("");
     }
   }
 
@@ -527,6 +570,46 @@ function renderTopology() {
   root.appendChild(list);
 }
 
+async function blockDevice(d, blocked) {
+  const r = await window.meshwatch.pihole.block(d.mac, blocked);
+  if (r && r.ok) {
+    d.blocked = blocked;
+    toast(blocked ? (d.name + " blocked via Pi-hole") : (d.name + " unblocked"));
+    return true;
+  }
+  toast((r && r.reason) || "Could not change blocking");
+  return false;
+}
+
+async function runFindingAction(mac, action) {
+  const d = state.devices.find((x) => x.mac === mac);
+  const act = String(action || "");
+  if (/block internet/i.test(act) && d) return blockDevice(d, true);
+  if (/update firmware/i.test(act) && d && d.ip) {
+    const r = await window.meshwatch.tplink.action(d.ip, "firmwareUpdate", {});
+    if (r && r.adminPage && !r.ok) {
+      toast((r.reason || "Not available") + " — opening admin");
+      return openInAppBrowser(r.adminPage);
+    }
+    toast((r && r.reason) || (r && r.ok ? "Update requested" : "Could not update"));
+    return;
+  }
+  if (/open device|record the version/i.test(act) && d) {
+    go("inventory");
+    return openDetail(d);
+  }
+  if (/fallback dns/i.test(act)) {
+    toast("Set a secondary DNS on the gateway admin page — Meshwatch will not change WAN DNS without you looking.");
+    if (d && d.ip) openInAppBrowser("http://" + d.ip + "/");
+    return;
+  }
+  if (/retire/i.test(act) && d) {
+    go("inventory");
+    return openDetail(d);
+  }
+  toast(act);
+}
+
 function renderAudit() {
   const box = $("#audit-list");
   const stats = $("#audit-stats");
@@ -596,8 +679,11 @@ function renderAudit() {
   for (const f of findings) {
     const div = document.createElement("div");
     div.className = "finding" + (showingDismissed ? " dismissed" : "");
-    const actionBtn = !showingDismissed && f.action && /block internet/i.test(f.action)
-      ? '<button type="button" class="secondary finding-block" data-mac="' + escapeHtml(f.mac || "") + '">Block internet</button>'
+    const actionBtn = !showingDismissed && f.action
+      ? '<button type="button" class="primary-inline finding-act" data-mac="' + escapeHtml(f.mac || "") + '" data-action="' + escapeHtml(f.action) + '">' + escapeHtml(f.action) + "</button>"
+      : "";
+    const openBtn = f.mac
+      ? '<button type="button" class="secondary finding-open" data-mac="' + escapeHtml(f.mac || "") + '">Open device</button>'
       : "";
     const dismissBtn = showingDismissed
       ? '<button type="button" class="secondary finding-restore" data-key="' + escapeHtml(f.key || "") + '">Restore</button>'
@@ -611,12 +697,17 @@ function renderAudit() {
       (f.estimated ? '<span class="est">estimate</span>' : "") +
       (showingDismissed ? '<span class="meta">Dismissed — not counted in score</span>' : "") +
       "</div>" +
-      '<div class="finding-actions">' + dismissBtn + actionBtn + "</div>";
+      '<div class="finding-actions">' + actionBtn + openBtn + dismissBtn + "</div>";
     box.appendChild(div);
   }
-  $$(".finding-block", box).forEach((b) => {
+  $$(".finding-act", box).forEach((b) => {
+    b.addEventListener("click", () => runFindingAction(b.dataset.mac, b.dataset.action));
+  });
+  $$(".finding-open", box).forEach((b) => {
     b.addEventListener("click", () => {
-      toast("Internet blocking is not available yet — it needs a live Pi-hole API connection.");
+      const d = state.devices.find((x) => x.mac === b.dataset.mac);
+      go("inventory");
+      if (d) openDetail(d);
     });
   });
   $$(".finding-dismiss", box).forEach((b) => {
@@ -668,37 +759,58 @@ async function loadPihole() {
   const stats = $("#pihole-stats");
   const blocked = $("#pihole-blocked");
   const host = $("#pihole-host");
+  const leasesEl = $("#pihole-leases");
+  const sshTarget = $("#pihole-ssh-target");
   try {
     const target = await window.meshwatch.pihole.target();
+    if (sshTarget) {
+      sshTarget.textContent = target && target.host
+        ? ((target.user || "admin") + "@" + target.host + " : " + target.port)
+        : "not set";
+    }
     const s = await window.meshwatch.pihole.stats();
+    state.piStats = s && s.available ? s : null;
+    renderOverview();
     if (!s || s.available === false) {
       stats.innerHTML = [
         ["Queries today", "—"],
         ["Blocked", "—"],
-        ["Blocked %", "—"],
+        ["Blocklist", "—"],
         ["SSH port", (target && target.port) || "—"]
       ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
-      blocked.innerHTML = '<p class="empty">' + escapeHtml((s && s.reason) || "Pi-hole API is not connected yet. Save the API token in Preferences when ready.") + "</p>";
+      blocked.innerHTML = '<p class="empty">' + escapeHtml((s && s.reason) || "Pi-hole API is not connected yet. Save the API password in Preferences.") + "</p>";
       const where = target && target.host
         ? (target.user + "@" + target.host + " -p " + target.port)
         : "host not set";
-      host.innerHTML = '<p class="empty">SSH target: <code>' + escapeHtml(where) + "</code>. Set the port in Preferences if you moved off 22.</p>";
+      host.innerHTML = '<p class="empty">SSH target: <code>' + escapeHtml(where) + "</code>. Choose a private key in Preferences.</p>";
+      if (leasesEl) leasesEl.innerHTML = '<p class="empty">No leases yet.</p>';
       return;
     }
     stats.innerHTML = [
       ["Queries today", s.queriesToday],
-      ["Blocked", s.blockedToday],
-      ["Blocked %", s.blockedPercent],
-      ["Blocklist", s.blocklistSize]
+      ["Blocked", s.blockedPercent != null ? s.blockedPercent + "%" : s.blockedToday],
+      ["Blocklist", s.blocklist],
+      ["FTL", s.firmware || s.ftlUptime || "up"]
     ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n == null ? "—" : n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
 
-    const tops = s.topBlocked || [];
+    const tops = s.blocked || s.topBlocked || [];
     blocked.innerHTML = tops.length
       ? tops.map((t) => '<div class="blocked-row"><span>' + escapeHtml(t.domain || t) + "</span><span>" + escapeHtml(String(t.hits || "")) + "</span></div>").join("")
       : '<p class="empty">No blocked domains reported.</p>';
     host.innerHTML = s.hostNote
       ? "<p>" + escapeHtml(s.hostNote) + "</p>"
       : '<p class="empty">Host metrics via SSH when connected.</p>';
+
+    if (leasesEl) {
+      const leases = await window.meshwatch.pihole.leases();
+      leasesEl.innerHTML = (leases && leases.length)
+        ? leases.slice(0, 8).map((l) =>
+          '<div class="lease-row"><span>' + escapeHtml(l.hostname || l.name || l.ip) +
+          ' <span class="cell-sub">' + escapeHtml(l.ip || "") + "</span></span><span>" +
+          escapeHtml(l.expires || "—") + "</span></div>"
+        ).join("")
+        : '<p class="empty">No DHCP leases returned.</p>';
+    }
   } catch (e) {
     stats.innerHTML = '<p class="empty">' + escapeHtml(e.message) + "</p>";
   }
@@ -792,7 +904,15 @@ async function openDetail(d) {
   primary.className = "primary-inline";
   if (behind) {
     primary.textContent = "Update firmware to " + fwLatest;
-    primary.addEventListener("click", () => toast("Firmware update from Meshwatch is not available yet. Use the device admin page for now."));
+    primary.addEventListener("click", async () => {
+      const r = await window.meshwatch.tplink.action(d.ip, "firmwareUpdate", {});
+      if (r && r.cancelled) return toast("Cancelled");
+      if (r && r.ok) return toast("Firmware update requested");
+      if (r && r.adminPage) {
+        toast((r.reason || "Not available") + " — opening admin in Meshwatch");
+        openInAppBrowser(r.adminPage);
+      } else toast((r && r.reason) || "Firmware update is not available from Meshwatch");
+    });
   } else if (d.estimated || fw === "—") {
     primary.textContent = "Record firmware manually";
     primary.addEventListener("click", async () => {
@@ -857,9 +977,21 @@ async function openDetail(d) {
 
   const block = document.createElement("button");
   block.type = "button";
-  block.textContent = "Block internet access";
-  block.addEventListener("click", () => toast("Internet blocking is not available yet — it needs a live Pi-hole API connection."));
+  block.textContent = d.blocked ? "Allow internet access" : "Block internet access";
+  block.addEventListener("click", () => blockDevice(d, !d.blocked));
   actions.appendChild(block);
+
+  const watchBtn = document.createElement("button");
+  watchBtn.type = "button";
+  watchBtn.textContent = d.watched ? "Stop watching join/leave" : "Alert when it joins or leaves";
+  watchBtn.addEventListener("click", async () => {
+    const next = !d.watched;
+    await window.meshwatch.watchDevice(d.mac, next);
+    d.watched = next;
+    toast(next ? "Watching " + (d.name || d.ip) : "Stopped watching");
+    openDetail(d);
+  });
+  actions.appendChild(watchBtn);
 
   const noteBtn = document.createElement("button");
   noteBtn.type = "button";
@@ -905,7 +1037,7 @@ async function openDetail(d) {
         if (r && r.adminPage && (!r.ok)) {
           toast((r.reason || "Not available") + " — opening admin in Meshwatch");
           openInAppBrowser(r.adminPage);
-        } else if (r && r.ok) toast(label + " ok");
+        } else if (r && r.ok) toast(r.note ? (label + " — " + r.note) : (label + " ok"));
         else toast((r && r.reason) || "This control action is not available yet");
       });
       actions.appendChild(b);
@@ -965,7 +1097,13 @@ function openCtx(x, y, d) {
       toast("Firmware recorded");
       renderInventory();
     }],
-    ["Block internet…", () => toast("Internet blocking is not available yet — it needs a live Pi-hole API connection.")],
+    ["Block internet…", () => blockDevice(d, true)],
+    [d.watched ? "Stop watching…" : "Alert when it joins or leaves", async () => {
+      const next = !d.watched;
+      await window.meshwatch.watchDevice(d.mac, next);
+      d.watched = next;
+      toast(next ? "Watching " + (d.name || d.ip) : "Stopped watching");
+    }],
     ["Add note…", async () => {
       const note = await askText({
         title: "Note for " + (d.name || d.ip || "device"),
@@ -1048,9 +1186,18 @@ function exportCsv() {
 }
 
 async function loadPreferences() {
+  try {
+    const remote = await window.meshwatch.prefs.get();
+    if (remote) state.prefs = Object.assign(state.prefs, remote);
+  } catch (e) { /* local copy is fine */ }
   $("#pref-offline").checked = !!state.prefs.showOffline;
   $("#pref-autoscan").checked = !!state.prefs.autoScan;
   $("#pref-theme").value = state.prefs.theme || "system";
+  if ($("#pref-interval")) $("#pref-interval").value = String(state.prefs.scanIntervalMin == null ? 15 : state.prefs.scanIntervalMin);
+  if ($("#pref-notify")) $("#pref-notify").checked = state.prefs.notifyNewDevice !== false;
+  if ($("#pref-startup")) $("#pref-startup").checked = !!state.prefs.startWithSystem;
+  if ($("#pref-ports")) $("#pref-ports").value = state.prefs.deepPortScan || "weekly";
+  if ($("#pref-firmware")) $("#pref-firmware").checked = state.prefs.firmwareSync !== false;
   const avail = await window.meshwatch.credentials.available();
   $("#cred-status").textContent = avail
     ? "OS-backed encryption available. Passwords never leave this machine."
@@ -1070,6 +1217,15 @@ async function loadPreferences() {
   $("#pihole-host-note").textContent = pi && pi.remembered
     ? "Kept after the first discovery so the Pi-hole panel stays available offline."
     : (pi && pi.discovered ? "Detected on this network." : "Run a scan to remember the Pi-hole host.");
+  try {
+    const has = await window.meshwatch.pihole.hasPassword();
+    $("#pihole-api-note").textContent = has
+      ? "API password is saved on this PC."
+      : "Pi-hole 5 auth token or Pi-hole 6 app password. Stored with OS encryption.";
+  } catch (e) { /* ignore */ }
+  if (pi && pi.keyPath) {
+    $("#pihole-key-note").textContent = "Using " + pi.keyPath;
+  }
 
   const sel = $("#cred-mac");
   sel.textContent = "";
@@ -1356,14 +1512,52 @@ $("#pref-theme").addEventListener("change", () => {
   applyTheme(state.prefs.theme);
 });
 
+const apiForm = $("#pihole-api-form");
+if (apiForm) {
+  apiForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const password = $("#pref-pihole-api").value;
+    const r = await window.meshwatch.pihole.setPassword(password);
+    if (r && r.ok) {
+      $("#pref-pihole-api").value = "";
+      toast("Pi-hole API password saved");
+      loadPreferences();
+      loadPihole();
+    } else toast((r && r.reason) || "Could not save API password");
+  });
+}
+const keyBtn = $("#pref-ssh-key");
+if (keyBtn) {
+  keyBtn.addEventListener("click", async () => {
+    const r = await window.meshwatch.pihole.pickKey();
+    if (r && r.ok) {
+      toast("Using SSH key " + r.path);
+      loadPreferences();
+    } else if (!r || !r.cancelled) toast("No key selected");
+  });
+}
+
 refreshHeader();
-loadDevices().then(() => {
+loadDevices().then(async () => {
+  try {
+    const remote = await window.meshwatch.prefs.get();
+    if (remote) state.prefs = Object.assign(state.prefs, remote);
+  } catch (e) { /* ignore */ }
+  try {
+    state.piStats = await window.meshwatch.pihole.stats();
+    if (state.piStats && state.piStats.available === false) state.piStats = null;
+  } catch (e) { state.piStats = null; }
+  renderOverview();
   if (state.prefs.autoScan) startScan();
 });
+if (window.meshwatch.onScanFinished) {
+  window.meshwatch.onScanFinished(() => {
+    loadDevices();
+    loadPihole();
+  });
+}
 window.meshwatch.versions().then((v) => {
   if (v && v.chrome) {
-    const note = $("#cred-status");
-    // Preferences shows vault status; Chromium version goes in header sub on demand via version badge title
     $("#version").title = "Chromium " + v.chrome + " · Electron " + v.electron + " · Node " + v.node;
   }
 }).catch(() => {});

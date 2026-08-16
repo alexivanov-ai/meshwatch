@@ -63,7 +63,13 @@ function init() {
   const newColumns = {
     model: "TEXT", end_of_support: "TEXT", matched_by: "TEXT",
     web_reachable: "INTEGER DEFAULT 0", web_title: "TEXT", web_server: "TEXT", web_login_form: "INTEGER DEFAULT 0",
-    name_override: "TEXT"
+    name_override: "TEXT",
+    open_ports: "TEXT",
+    query_count: "INTEGER",
+    clients: "INTEGER",
+    watched: "INTEGER DEFAULT 0",
+    blocked: "INTEGER DEFAULT 0",
+    ssdp_st: "TEXT"
   };
   for (const [name, type] of Object.entries(newColumns)) {
     if (!existingColumns.has(name)) db.exec("ALTER TABLE devices ADD COLUMN " + name + " " + type);
@@ -82,10 +88,10 @@ function recordScan(devices) {
   const upsert = db.prepare(
     "INSERT INTO devices (mac, ip, name, vendor, model, type, parent_mac, parent_estimated, link, signal," +
     " firmware, firmware_latest, firmware_source, end_of_support, control, estimated, matched_by," +
-    " web_reachable, web_title, web_server, web_login_form, first_seen, last_seen)" +
+    " web_reachable, web_title, web_server, web_login_form, open_ports, query_count, clients, ssdp_st, first_seen, last_seen)" +
     " VALUES (@mac, @ip, @name, @vendor, @model, @type, @parent_mac, @parent_estimated, @link, @signal," +
     " @firmware, @firmware_latest, @firmware_source, @end_of_support, @control, @estimated, @matched_by," +
-    " @web_reachable, @web_title, @web_server, @web_login_form, @now, @now)" +
+    " @web_reachable, @web_title, @web_server, @web_login_form, @open_ports, @query_count, @clients, @ssdp_st, @now, @now)" +
     " ON CONFLICT(mac) DO UPDATE SET" +
     " ip=excluded.ip," +
     // Keep the scanned/discovered name in `name`, but never wipe a user rename.
@@ -100,6 +106,10 @@ function recordScan(devices) {
     " matched_by=excluded.matched_by," +
     " web_reachable=excluded.web_reachable, web_title=excluded.web_title," +
     " web_server=excluded.web_server, web_login_form=excluded.web_login_form," +
+    " open_ports=COALESCE(excluded.open_ports, devices.open_ports)," +
+    " query_count=COALESCE(excluded.query_count, devices.query_count)," +
+    " clients=COALESCE(excluded.clients, devices.clients)," +
+    " ssdp_st=COALESCE(excluded.ssdp_st, devices.ssdp_st)," +
     " last_seen=@now"
   );
   const sight = db.prepare("INSERT INTO sightings (mac, ip, seen_at, method) VALUES (?, ?, ?, ?)");
@@ -117,6 +127,10 @@ function recordScan(devices) {
         control: d.control || null, estimated: d.estimated ? 1 : 0, matched_by: d.matchedBy || null,
         web_reachable: web.reachable ? 1 : 0, web_title: web.title || null,
         web_server: web.server || null, web_login_form: web.hasLoginForm ? 1 : 0,
+        open_ports: d.openPorts ? JSON.stringify(d.openPorts) : null,
+        query_count: d.queryCount != null ? d.queryCount : null,
+        clients: d.clients != null ? d.clients : null,
+        ssdp_st: (d.ssdpHit && d.ssdpHit.st) || d.ssdp_st || null,
         now
       });
       sight.run(d.mac, d.ip || null, now, (d.methods || []).join("+") || "unknown");
@@ -146,8 +160,12 @@ function listDevices() {
       methods,
       discoveredName,
       nameOverride,
-      // What the UI shows — user rename wins over discovery.
-      name: nameOverride || discoveredName
+      name: nameOverride || discoveredName,
+      openPorts: d.open_ports ? safeJson(d.open_ports, []) : [],
+      watched: !!d.watched,
+      blocked: !!d.blocked,
+      queryCount: d.query_count,
+      clients: d.clients
     });
   });
 }
@@ -173,6 +191,80 @@ function setFirmwareManual(mac, version) {
     "UPDATE devices SET firmware_manual = ?, firmware = COALESCE(?, firmware), firmware_source = ? WHERE mac = ?"
   ).run(version || null, version || null, version ? "manual" : null, mac);
   return { ok: true };
+}
+
+function setOpenPorts(mac, ports) {
+  db.prepare("UPDATE devices SET open_ports = ? WHERE mac = ?").run(ports ? JSON.stringify(ports) : null, mac);
+  return { ok: true };
+}
+
+function setWatched(mac, watched) {
+  db.prepare("UPDATE devices SET watched = ? WHERE mac = ?").run(watched ? 1 : 0, mac);
+  return { ok: true };
+}
+
+function setBlocked(mac, blocked) {
+  db.prepare("UPDATE devices SET blocked = ? WHERE mac = ?").run(blocked ? 1 : 0, mac);
+  return { ok: true };
+}
+
+function setQueryCount(mac, n) {
+  db.prepare("UPDATE devices SET query_count = ? WHERE mac = ?").run(n == null ? null : Number(n), mac);
+}
+
+function setClients(mac, n) {
+  db.prepare("UPDATE devices SET clients = ? WHERE mac = ?").run(n == null ? null : Number(n), mac);
+}
+
+function updateDeviceFields(mac, fields) {
+  const allowed = {
+    parent_mac: "parent_mac", parent_estimated: "parent_estimated",
+    link: "link", signal: "signal", firmware: "firmware",
+    firmware_latest: "firmware_latest", firmware_source: "firmware_source",
+    clients: "clients", query_count: "query_count", open_ports: "open_ports"
+  };
+  const sets = [];
+  const vals = [];
+  for (const [k, col] of Object.entries(allowed)) {
+    if (Object.prototype.hasOwnProperty.call(fields, k)) {
+      sets.push(col + " = ?");
+      let v = fields[k];
+      if (k === "open_ports" && v && typeof v !== "string") v = JSON.stringify(v);
+      if (k === "parent_estimated") v = v ? 1 : 0;
+      vals.push(v == null ? null : v);
+    }
+  }
+  if (!sets.length) return { ok: false };
+  vals.push(mac);
+  db.prepare("UPDATE devices SET " + sets.join(", ") + " WHERE mac = ?").run(...vals);
+  return { ok: true };
+}
+
+const DEFAULT_PREFS = {
+  showOffline: true,
+  autoScan: false,
+  theme: "system",
+  scanIntervalMin: 15,
+  notifyNewDevice: true,
+  startWithSystem: false,
+  deepPortScan: "weekly",
+  firmwareSync: true
+};
+
+function getPrefs() {
+  let parsed = {};
+  try { parsed = JSON.parse(getSetting("prefs_json") || "{}"); } catch (e) { parsed = {}; }
+  return Object.assign({}, DEFAULT_PREFS, parsed);
+}
+
+function setPrefs(patch) {
+  const next = Object.assign(getPrefs(), patch || {});
+  if (next.scanIntervalMin != null) {
+    const n = Number(next.scanIntervalMin);
+    next.scanIntervalMin = Number.isFinite(n) ? Math.max(0, Math.min(1440, n)) : 15;
+  }
+  setSetting("prefs_json", JSON.stringify(next));
+  return { ok: true, prefs: next };
 }
 
 // --- credentials -------------------------------------------------------
@@ -213,6 +305,10 @@ function setSetting(key, value) {
     " ON CONFLICT(key) DO UPDATE SET value = excluded.value"
   ).run(key, value == null ? null : String(value));
   return { ok: true };
+}
+
+function safeJson(text, fallback) {
+  try { return JSON.parse(text); } catch (e) { return fallback; }
 }
 
 function getSettings(keys) {
@@ -277,6 +373,7 @@ function getPiHoleState() {
     ip: (live && live.ip) || ip || null,
     sshPort: sshPort,
     sshUser,
+    keyPath: getSetting("pihole_ssh_key"),
     online: !!live
   };
 }
@@ -318,6 +415,8 @@ function restoreFinding(key) {
 
 module.exports = {
   init, recordScan, listDevices, setNote, setNameOverride, setFirmwareManual,
+  setOpenPorts, setWatched, setBlocked, setQueryCount, setClients, updateDeviceFields,
+  getPrefs, setPrefs, DEFAULT_PREFS,
   saveCredential, listCredentialMeta, getCredential, removeCredential,
   getSetting, setSetting, getSettings,
   looksLikePiHole, notePiHoleDiscovery, getPiHoleState, setPiHolePrefs,

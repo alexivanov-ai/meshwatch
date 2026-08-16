@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld("meshwatch", {
   setNote: (mac, note) => ipcRenderer.invoke("devices:note", { mac, note }),
   renameDevice: (mac, name) => ipcRenderer.invoke("devices:rename", { mac, name }),
   setFirmwareManual: (mac, version) => ipcRenderer.invoke("devices:firmwareManual", { mac, version }),
+  watchDevice: (mac, watched) => ipcRenderer.invoke("devices:watch", { mac, watched }),
+
+  prefs: {
+    get: () => ipcRenderer.invoke("prefs:get"),
+    set: (patch) => ipcRenderer.invoke("prefs:set", patch)
+  },
 
   pihole: {
     stats: () => ipcRenderer.invoke("pihole:stats"),
@@ -21,7 +27,11 @@ contextBridge.exposeInMainWorld("meshwatch", {
     exec: (command) => ipcRenderer.invoke("pihole:exec", { command }),
     state: () => ipcRenderer.invoke("pihole:state"),
     setPrefs: (prefs) => ipcRenderer.invoke("pihole:prefs", prefs),
-    target: () => ipcRenderer.invoke("pihole:target")
+    target: () => ipcRenderer.invoke("pihole:target"),
+    hasPassword: () => ipcRenderer.invoke("pihole:hasPassword"),
+    setPassword: (password) => ipcRenderer.invoke("pihole:setPassword", { password }),
+    pickKey: () => ipcRenderer.invoke("pihole:pickKey"),
+    block: (mac, blocked) => ipcRenderer.invoke("pihole:block", { mac, blocked })
   },
 
   tplink: {
@@ -81,5 +91,10 @@ contextBridge.exposeInMainWorld("meshwatch", {
     const handler = (_e, payload) => cb(payload);
     ipcRenderer.on("scan:progress", handler);
     return () => ipcRenderer.removeListener("scan:progress", handler);
+  },
+  onScanFinished: (cb) => {
+    const handler = (_e, payload) => cb(payload);
+    ipcRenderer.on("scan:finished", handler);
+    return () => ipcRenderer.removeListener("scan:finished", handler);
   }
 });

@@ -14,7 +14,7 @@
     "start": "node scripts/ensure-electron.js && electron .",
     "start:debug": "node scripts/ensure-electron.js && electron . --enable-logging",
     "test:discovery": "node scripts/test-discovery.js",
-    "build:win": "node scripts/ensure-electron.js && electron-builder --win nsis",
+    "build:win": "node scripts/ensure-electron.js && node scripts/make-icon.js && electron-builder --win nsis",
     "build:mac": "node scripts/ensure-electron.js && electron-builder --mac dmg"
   },
   "devDependencies": {
@@ -57,9 +57,8 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
       "differentialPackage": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico"
+      "installerIcon": "build/installerIcon.ico",
+      "uninstallerIcon": "build/installerIcon.ico"
     },
     "publish": [
       {

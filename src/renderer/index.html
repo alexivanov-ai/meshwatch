@@ -29,11 +29,19 @@
 
   <main>
     <nav>
+      <div class="nav-home">
+        <div class="muted upper">Network</div>
+        <div class="nav-home-title">Home</div>
+        <div class="nav-home-counts">
+          <span id="nav-online">0 online</span>
+          <span id="nav-offline">0 off</span>
+        </div>
+      </div>
       <button class="nav on" data-view="overview">Overview</button>
       <button class="nav" data-view="inventory">Inventory <span class="badge" id="badge-inventory"></span></button>
       <button class="nav" data-view="topology">Topology</button>
       <button class="nav" data-view="audit">Security audit <span class="badge" id="badge-audit"></span></button>
-      <button class="nav" data-view="pihole" id="nav-pihole" hidden>Pi-hole · SSH</button>
+      <button class="nav" data-view="pihole" id="nav-pihole">Pi-hole · SSH</button>
       <button class="nav" data-view="discovery">Discovery <span class="badge" id="badge-discovery"></span></button>
       <button class="nav" data-view="preferences">Preferences</button>
       <div class="spacer"></div>
@@ -56,10 +64,20 @@
             </div>
             <div id="overview-attention"></div>
           </div>
-          <div class="panel score-panel">
-            <div class="muted upper">Posture score</div>
-            <div class="score" id="overview-score">—</div>
-            <p class="muted" id="overview-score-note">Run a scan, then open Security audit.</p>
+          <div>
+            <div class="panel">
+              <div class="panel-head"><h2>Top DNS clients</h2></div>
+              <div id="overview-talkers" class="empty">Connect Pi-hole in Preferences to see who is querying DNS.</div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h2>Clients per node</h2></div>
+              <div id="overview-nodes" class="empty">Run a scan.</div>
+            </div>
+            <div class="panel score-panel">
+              <div class="muted upper">Posture score</div>
+              <div class="score" id="overview-score">—</div>
+              <p class="muted" id="overview-score-note">Run a scan, then open Security audit.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -76,8 +94,8 @@
         <table id="devices">
           <thead>
             <tr>
-              <th>Name</th><th>IP</th><th>MAC</th><th>Vendor</th><th>Type</th>
-              <th>Firmware</th><th>Risk</th><th>Status</th>
+              <th>Device</th><th>Type</th><th>Address</th>
+              <th>Connected via</th><th>Firmware</th><th>Risk</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -113,30 +131,33 @@
         <div class="stat-row" id="pihole-stats"></div>
         <div class="split">
           <div class="panel">
-            <div class="panel-head"><h2>Top blocked</h2></div>
-            <div id="pihole-blocked" class="empty">Pi-hole API is not connected yet. Add the API token in Preferences when ready.</div>
+            <div class="panel-head"><h2>Most blocked domains</h2></div>
+            <div id="pihole-blocked" class="empty">Pi-hole API is not connected yet. Add the API password in Preferences.</div>
+            <h2 class="subhead">DHCP leases expiring</h2>
+            <div id="pihole-leases" class="empty">Leases appear here once the API or SSH can read them.</div>
           </div>
           <div class="panel">
-            <div class="panel-head"><h2>Host</h2></div>
+            <div class="panel-head">
+              <h2>SSH session</h2>
+              <span class="muted" id="pihole-ssh-target"></span>
+            </div>
             <div id="pihole-host" class="empty">CPU, disk and apt updates appear here once SSH is connected.</div>
+            <div class="btn-row" id="pihole-actions">
+              <button type="button" data-cmd="pihole status">pihole status</button>
+              <button type="button" data-cmd="pihole -g">Update gravity</button>
+              <button type="button" data-cmd="systemctl restart pihole-FTL" class="warn">Restart FTL</button>
+              <button type="button" data-cmd="cat /etc/pihole/dhcp.leases">DHCP leases</button>
+              <button type="button" data-cmd="pihole -c -e">top talkers</button>
+              <button type="button" data-cmd="vcgencmd measure_temp">CPU temperature</button>
+              <button type="button" data-cmd="df -h">Disk space</button>
+              <button type="button" data-cmd="apt list --upgradable">Apt updates</button>
+            </div>
+            <form id="pihole-form" class="cmd-form">
+              <input type="text" id="pihole-cmd" placeholder="Arbitrary command…" autocomplete="off">
+              <button type="submit">Run</button>
+            </form>
+            <pre id="pihole-out" class="log"></pre>
           </div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Commands</h2></div>
-          <div class="btn-row" id="pihole-actions">
-            <button type="button" data-cmd="pihole status">pihole status</button>
-            <button type="button" data-cmd="pihole -g">Update gravity</button>
-            <button type="button" data-cmd="systemctl restart pihole-FTL" class="warn">Restart FTL</button>
-            <button type="button" data-cmd="cat /etc/pihole/dhcp.leases">DHCP leases</button>
-            <button type="button" data-cmd="vcgencmd measure_temp">CPU temperature</button>
-            <button type="button" data-cmd="df -h">Disk space</button>
-            <button type="button" data-cmd="apt list --upgradable">Apt updates</button>
-          </div>
-          <form id="pihole-form" class="cmd-form">
-            <input type="text" id="pihole-cmd" placeholder="Arbitrary command…" autocomplete="off">
-            <button type="submit">Run</button>
-          </form>
-          <pre id="pihole-out" class="log"></pre>
         </div>
       </div>
 
@@ -194,6 +215,51 @@
           </div>
           <div class="pref-row">
             <div>
+              <div class="pref-label">Automatic sweep interval</div>
+              <div class="pref-note">ARP + mDNS + SSDP, reconciled against Pi-hole leases. 0 turns it off.</div>
+            </div>
+            <select id="pref-interval" aria-label="Sweep interval">
+              <option value="0">Off</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="15">Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+              <option value="60">Every hour</option>
+            </select>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Notify on new device</div>
+              <div class="pref-note">Windows notification when an unknown MAC appears on a sweep</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-notify" checked> On</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Start with the system</div>
+              <div class="pref-note">Launch minimised in the tray when you sign in</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-startup"> Off</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Deep port scan</div>
+              <div class="pref-note">Checks telnet, printer, HTTP admin and GREE UDP 7000 on this LAN only</div>
+            </div>
+            <select id="pref-ports" aria-label="Deep port scan">
+              <option value="off">Off</option>
+              <option value="weekly">With each audit, at most weekly</option>
+              <option value="every-scan">Every audit</option>
+            </select>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Firmware from device APIs</div>
+              <div class="pref-note">Read versions from Pi-hole and TP-Link when a password is saved. Never invents a CVE.</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-firmware" checked> On</label>
+          </div>
+          <div class="pref-row">
+            <div>
               <div class="pref-label">Check for app updates</div>
               <div class="pref-note">Installed builds only — GitHub Releases</div>
             </div>
@@ -225,6 +291,23 @@
                 <div class="pref-note" id="pihole-host-note">Not set yet</div>
               </div>
               <span class="muted" id="pihole-host-value">—</span>
+            </div>
+            <div class="pref-row">
+              <div>
+                <div class="pref-label">API password</div>
+                <div class="pref-note" id="pihole-api-note">Pi-hole 5 auth token or Pi-hole 6 app password. Stored with OS encryption.</div>
+              </div>
+              <form id="pihole-api-form" class="inline-form">
+                <input type="password" id="pref-pihole-api" placeholder="Paste password" autocomplete="off">
+                <button type="submit" class="primary-inline">Save</button>
+              </form>
+            </div>
+            <div class="pref-row">
+              <div>
+                <div class="pref-label">SSH private key</div>
+                <div class="pref-note" id="pihole-key-note">OpenSSH key for the Pi. PuTTY .ppk files are not used.</div>
+              </div>
+              <button type="button" class="secondary" id="pref-ssh-key">Choose key…</button>
             </div>
           </div>
         </div>

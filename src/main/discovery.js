@@ -4,7 +4,7 @@
 //   1. ICMP ping sweep + OS ARP table   - unprivileged, no Npcap required
 //   2. mDNS / Bonjour browse
 //   3. SSDP / UPnP search
-//   4. DHCP leases from Pi-hole         - empty until phase 2 credentials
+//   4. DHCP leases from Pi-hole         - API or SSH once credentials are saved
 //   5. HTTP web probe (port 80 title)
 //   6. SNMP GET sysName/sysDescr        - managed switches/APs that speak SNMP
 //
@@ -414,6 +414,70 @@ async function snmpProbe(ip) {
   return { sysName: sysName || null, sysDescr: sysDescr || null };
 }
 
+function parseSnmpInteger(buf) {
+  for (let i = 0; i < buf.length - 2; i++) {
+    if (buf[i] !== 0x02) continue;
+    const len = buf[i + 1];
+    if (len < 1 || len > 4 || i + 2 + len > buf.length) continue;
+    let v = 0;
+    for (let k = 0; k < len; k++) v = (v << 8) | buf[i + 2 + k];
+    return v;
+  }
+  return null;
+}
+
+function snmpGetRaw(ip, oid, community, timeoutMs) {
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket("udp4");
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      try { socket.close(); } catch (e) { /* ignore */ }
+      resolve(value);
+    };
+    const t = setTimeout(() => done(null), timeoutMs || 1200);
+    socket.on("message", (msg) => {
+      clearTimeout(t);
+      done(msg);
+    });
+    socket.on("error", () => {
+      clearTimeout(t);
+      done(null);
+    });
+    try {
+      socket.send(snmpGetPacket(community || "public", oid), 161, ip);
+    } catch (e) {
+      clearTimeout(t);
+      done(null);
+    }
+  });
+}
+
+function macToOid(mac) {
+  return String(mac).split(":").map((h) => parseInt(h, 16)).join(".");
+}
+
+async function switchFdbParents(devices, gatewayMac) {
+  const switches = devices.filter((d) => d.type === "switch" && d.ip);
+  if (!switches.length) return;
+  for (const sw of switches) {
+    for (const d of devices) {
+      if (!d.mac || d.mac === sw.mac) continue;
+      const oid = "1.3.6.1.2.1.17.4.3.1.2." + macToOid(d.mac);
+      const raw = await snmpGetRaw(sw.ip, oid);
+      if (!raw) continue;
+      const port = parseSnmpInteger(raw);
+      if (!port) continue;
+      // Gateway MAC on the switch is the uplink — leave those hanging off the gateway.
+      if (gatewayMac && d.mac === gatewayMac) continue;
+      d.parentMac = sw.mac;
+      d.parentEstimated = true;
+      d.link = d.link || ("Ethernet · port " + port + " est.");
+    }
+  }
+}
+
 // Reverse DNS (PTR) against whatever resolver this PC uses — often the
 // Pi-hole / router, which may already know a hostname for the lease.
 async function dnsReverse(ip) {
@@ -677,15 +741,60 @@ async function run({ onProgress } = {}) {
     d.firmwareLatest = null;
     d.firmwareSource = d.control === "none" ? "no API" : null;
     d.subnet = subnet.cidr;
+    d.ssdp_st = d.ssdpHit && d.ssdpHit.st;
 
-    delete d.lease; delete d.mdnsHit; delete d.ssdpHit;
-    delete d.dnsName; delete d.netbiosName;
+    const titleFw = d.web && d.web.title && d.web.title.match(/(\d+\.\d+(?:\.\d+)?(?:\s*Build\s*\d+)?)/i);
+    if (titleFw && !d.firmware) {
+      d.firmware = titleFw[1];
+      d.firmwareSource = "web title";
+    }
   }
 
   const gatewayDevice = devices.find(d => d.ip === gatewayIp);
+  const gatewayMac = gatewayDevice ? gatewayDevice.mac : null;
   for (const d of devices) {
-    d.parentMac = (gatewayDevice && d.mac !== gatewayDevice.mac) ? gatewayDevice.mac : null;
+    d.parentMac = (gatewayMac && d.mac !== gatewayMac) ? gatewayMac : null;
     d.parentEstimated = true;
+    if (d.type === "gateway") {
+      d.parentMac = null;
+      d.parentEstimated = false;
+      d.link = d.link || "WAN";
+    }
+  }
+
+  report("fdb", { note: "SNMP forwarding table on managed switches" });
+  await switchFdbParents(devices, gatewayMac);
+
+  report("tplink", { note: "reading TP-Link client lists where a password is saved" });
+  try {
+    await require("./tplink").enrichDevices(devices);
+  } catch (e) { /* topology stays estimated */ }
+
+  try {
+    const stats = await require("./pihole").stats();
+    if (stats && stats.available && Array.isArray(stats.talkers)) {
+      for (const t of stats.talkers) {
+        const hit = devices.find((d) => d.ip === t.ip || d.name === t.name);
+        if (hit) hit.queryCount = t.queries;
+      }
+    }
+    if (stats && stats.available && stats.firmware) {
+      const pi = devices.find((d) => d.type === "dns-dhcp");
+      if (pi) {
+        pi.firmware = stats.firmware;
+        pi.firmwareSource = "pihole API";
+      }
+    }
+  } catch (e) { /* optional */ }
+
+  for (const d of devices) {
+    const kids = devices.filter((x) => x.parentMac === d.mac).length;
+    if (kids) d.clients = kids;
+  }
+
+  for (const d of devices) {
+    delete d.lease; delete d.mdnsHit; delete d.ssdpHit;
+    delete d.dnsName; delete d.netbiosName;
   }
 
   report("done", { found: devices.length, subnet: subnet.cidr });

@@ -786,65 +786,98 @@ async function runAudit() {
 }
 
 async function loadPi() {
-  const stats = $("#pi-stats");
-  const blocked = $("#pi-dns-blocked");
-  const host = $("#pi-host");
-  const leasesEl = $("#pi-leases");
-  const sshTarget = $("#pi-ssh-target");
   try {
+    const backendInfo = await window.meshwatch.pi.backend();
+    $("#pi-backend-name").textContent = backendInfo
+      ? backendInfo.name + (backendInfo.version ? " " + backendInfo.version : "")
+      : "No DNS service detected";
     const target = await window.meshwatch.pi.target();
-    if (sshTarget) {
-      sshTarget.textContent = target && target.host
-        ? ((target.user || "admin") + "@" + target.host + " : " + target.port)
-        : "not set";
-    }
+    const hostLine = target && target.host
+      ? target.host + " · SSH " + target.user + "@" + target.host + ":" + target.port
+      : "No host remembered yet";
+    $("#pi-host-line").textContent = hostLine;
+    $("#pi-ssh-target").textContent = hostLine;
+
+    $("#pi-open-admin").onclick = () => target.host && openInAppBrowser("http://" + target.host + "/");
+    const logBtn = $("#pi-open-log");
+    logBtn.hidden = !(backendInfo && backendInfo.name === "AdGuard Home");
+    logBtn.onclick = () => target.host && openInAppBrowser("http://" + target.host + "/#logs?response_status=all");
+
     const s = await window.meshwatch.pi.stats();
     state.piStats = s && s.available ? s : null;
     renderOverview();
-    if (!s || s.available === false) {
-      stats.innerHTML = [
-        ["Queries today", "—"],
-        ["Blocked", "—"],
-        ["Blocklist", "—"],
-        ["SSH port", (target && target.port) || "—"]
-      ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
-      blocked.innerHTML = '<p class="empty">' + escapeHtml((s && s.reason) || "Pi-hole API is not connected yet. Save the API password in Preferences.") + "</p>";
-      const where = target && target.host
-        ? (target.user + "@" + target.host + " -p " + target.port)
-        : "host not set";
-      host.innerHTML = '<p class="empty">SSH target: <code>' + escapeHtml(where) + "</code>. Choose a private key in Preferences.</p>";
-      if (leasesEl) leasesEl.innerHTML = '<p class="empty">No leases yet.</p>';
-      return;
-    }
-    stats.innerHTML = [
-      ["Queries today", s.queriesToday],
-      ["Blocked", s.blockedPercent != null ? s.blockedPercent + "%" : s.blockedToday],
-      ["Blocklist", s.blocklist],
-      ["FTL", s.firmware || s.ftlUptime || "up"]
-    ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n == null ? "—" : n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
 
-    const tops = s.blocked || s.topBlocked || [];
-    blocked.innerHTML = tops.length
-      ? tops.map((t) => '<div class="blocked-row"><span>' + escapeHtml(t.domain || t) + "</span><span>" + escapeHtml(String(t.hits || "")) + "</span></div>").join("")
-      : '<p class="empty">No blocked domains reported.</p>';
-    host.innerHTML = s.hostNote
-      ? "<p>" + escapeHtml(s.hostNote) + "</p>"
-      : '<p class="empty">Host metrics via SSH when connected.</p>';
-
-    if (leasesEl) {
-      const leases = await window.meshwatch.pi.leases();
-      leasesEl.innerHTML = (leases && leases.length)
-        ? leases.slice(0, 8).map((l) =>
-          '<div class="lease-row"><span>' + escapeHtml(l.hostname || l.name || l.ip) +
-          ' <span class="cell-sub">' + escapeHtml(l.ip || "") + "</span></span><span>" +
-          escapeHtml(l.expires || "—") + "</span></div>"
-        ).join("")
-        : '<p class="empty">No DHCP leases returned.</p>';
+    const statsEl = $("#pi-stats");
+    if (s && s.available) {
+      statsEl.innerHTML = [
+        ["Queries today", s.queriesToday],
+        ["Blocked today", s.blockedToday],
+        ["Blocked %", s.blockedPercent != null ? s.blockedPercent + "%" : "—"],
+        ["Blocklist size", s.blocklist || "—"]
+      ].map(([l, n]) => '<div class="stat"><div class="n">' + escapeHtml(String(n == null ? "—" : n)) + '</div><div class="l">' + escapeHtml(l) + "</div></div>").join("");
+    } else {
+      statsEl.innerHTML = '<div class="empty">' + escapeHtml((s && s.reason) || "DNS stats unavailable") + "</div>";
     }
+
+    const blockedEl = $("#pi-dns-blocked");
+    const hasBlocked = !!(s && s.blocked && s.blocked.length);
+    blockedEl.classList.toggle("empty", !hasBlocked);
+    blockedEl.innerHTML = hasBlocked
+      ? s.blocked.map((b) => '<div class="blocked-row"><span>' + escapeHtml(b.domain) + "</span><span>" + escapeHtml(String(b.hits)) + "</span></div>").join("")
+      : "No blocked-domain data yet.";
+
+    const leases = await window.meshwatch.pi.leases();
+    const leasesEl = $("#pi-leases");
+    const hasLeases = !!(leases && leases.length);
+    leasesEl.classList.toggle("empty", !hasLeases);
+    leasesEl.innerHTML = hasLeases
+      ? leases.map((l) =>
+        '<div class="lease-row"><span>' + escapeHtml(l.hostname || l.ip) +
+        ' <span class="cell-sub">' + escapeHtml(l.ip || "") + "</span></span><span>" +
+        escapeHtml(l.expires || "—") + "</span></div>"
+      ).join("")
+      : "No DHCP leases available from this backend.";
+
+    const host = await window.meshwatch.pi.hostStats();
+    const hostEl = $("#pi-host");
+    hostEl.classList.toggle("empty", !host.uptime);
+    hostEl.textContent = host.uptime
+      ? "Up " + host.uptime + " · disk " + (host.diskUsedPercent != null ? host.diskUsedPercent + "%" : "—") +
+        " (" + (host.diskUsed || "?") + " / " + (host.diskTotal || "?") + ") · " +
+        (host.cpuCores || "?") + " cores · load " + (host.loadAvg || "—")
+      : "Could not read host stats over SSH yet.";
+    const reboot = await window.meshwatch.pi.rebootRequired();
+    $("#pi-reboot-banner").hidden = !reboot;
+
+    const apps = await window.meshwatch.pi.installedApps();
+    const appsEl = $("#pi-apps");
+    const hasApps = !!(apps.ok && apps.apps.length);
+    appsEl.classList.toggle("empty", !hasApps);
+    appsEl.innerHTML = hasApps
+      ? apps.apps.map((a) => '<div class="node-row"><span>' + escapeHtml(a.name) + "</span></div>").join("")
+      : escapeHtml(apps.ok ? "No manually-installed apps found." : (apps.reason || "Could not read installed apps."));
   } catch (e) {
-    stats.innerHTML = '<p class="empty">' + escapeHtml(e.message) + "</p>";
+    $("#pi-stats").innerHTML = '<div class="empty">' + escapeHtml(e.message) + "</div>";
   }
 }
+
+$("#pi-apt-check").addEventListener("click", async () => {
+  const resultEl = $("#pi-apt-result");
+  resultEl.classList.remove("empty");
+  resultEl.textContent = "Checking…";
+  const r = await window.meshwatch.pi.aptCheck();
+  resultEl.innerHTML = r.ok
+    ? (r.count ? r.count + " package(s) upgradable: " + r.packages.map((p) => escapeHtml(p.name)).join(", ") : "Everything is up to date.")
+    : escapeHtml(r.reason || "Check failed");
+});
+
+$("#pi-apt-upgrade").addEventListener("click", async () => {
+  const r = await window.meshwatch.pi.aptUpgrade();
+  if (r && r.cancelled) return toast("Cancelled");
+  $("#pi-out").textContent = (r.output || []).join("\n");
+  toast(r.code ? "Upgrade finished with errors — see output below" : "Upgrade complete");
+  loadPi();
+});
 
 async function runPiCmd(command) {
   const out = $("#pi-out");
@@ -1446,9 +1479,6 @@ document.addEventListener("click", (e) => {
   if (!ctxEl.hidden && !ctxEl.contains(e.target)) hideCtx();
 });
 
-$$("#pi-actions button").forEach((b) => {
-  b.addEventListener("click", () => runPiCmd(b.dataset.cmd));
-});
 $("#pi-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const cmd = $("#pi-cmd").value.trim();

@@ -125,35 +125,56 @@
       </div>
 
       <div class="view" id="view-pi">
-        <div class="page-head">
-          <h1>Pi-hole · SSH</h1>
-          <p class="lede">DNS stats and remote shell</p>
+        <div class="panel" id="pi-header">
+          <h2 id="pi-backend-name">Detecting DNS service…</h2>
+          <span class="muted" id="pi-host-line"></span>
+          <div class="btn-row">
+            <button type="button" id="pi-open-admin">Open admin UI</button>
+            <button type="button" id="pi-open-log" hidden>View query log</button>
+          </div>
         </div>
+
         <div class="stat-row" id="pi-stats"></div>
-        <div class="split">
-          <div class="panel">
-            <div class="panel-head"><h2>Most blocked domains</h2></div>
-            <div id="pi-dns-blocked" class="empty">Pi-hole API is not connected yet. Add the API password in Preferences.</div>
-            <h2 class="subhead">DHCP leases expiring</h2>
-            <div id="pi-leases" class="empty">Leases appear here once the API or SSH can read them.</div>
+
+        <div class="panel">
+          <h2 class="subhead">Top blocked domains</h2>
+          <div id="pi-dns-blocked" class="empty">No DNS backend detected yet.</div>
+          <h2 class="subhead">DHCP leases</h2>
+          <div id="pi-leases" class="empty">Leases appear here once a backend is connected.</div>
+        </div>
+
+        <div class="panel" id="pi-services-panel">
+          <h2 class="subhead">Detected services</h2>
+          <div id="pi-services" class="empty">Save SSH credentials for the Pi to detect running services.</div>
+          <button type="button" class="secondary" id="pi-rescan-services">Rescan services</button>
+        </div>
+
+        <div class="panel" id="pi-system-panel">
+          <h2 class="subhead">Pi system</h2>
+          <div id="pi-host" class="empty">CPU, disk and uptime appear here once SSH is connected.</div>
+          <div id="pi-reboot-banner" class="est" hidden>A reboot is recommended to finish a previous update.</div>
+          <div class="btn-row">
+            <button type="button" id="pi-apt-check">Check for updates</button>
+            <button type="button" id="pi-apt-upgrade" class="warn">Upgrade all</button>
           </div>
-          <div class="panel">
-            <div class="panel-head">
-              <h2>SSH session</h2>
-              <span class="muted" id="pi-ssh-target"></span>
-            </div>
-            <div id="pi-host" class="empty">CPU, disk and apt updates appear here once SSH is connected.</div>
-            <div class="btn-row" id="pi-actions">
-              <button type="button" data-cmd="vcgencmd measure_temp">CPU temperature</button>
-              <button type="button" data-cmd="df -h">Disk space</button>
-              <button type="button" data-cmd="apt list --upgradable">Apt updates</button>
-            </div>
-            <form id="pi-form" class="cmd-form">
-              <input type="text" id="pi-cmd" placeholder="Arbitrary command…" autocomplete="off">
-              <button type="submit">Run</button>
-            </form>
-            <pre id="pi-out" class="log"></pre>
-          </div>
+          <div id="pi-apt-result" class="empty"></div>
+          <h2 class="subhead">Installed apps</h2>
+          <div id="pi-apps" class="empty"></div>
+        </div>
+
+        <div class="panel" id="pi-terminal-panel">
+          <h2 class="subhead">Terminal</h2>
+          <div id="pi-term"></div>
+        </div>
+
+        <div class="panel">
+          <h2 class="subhead">Command runner</h2>
+          <span class="muted" id="pi-ssh-target"></span>
+          <form id="pi-form" class="cmd-form">
+            <input type="text" id="pi-cmd" placeholder="Arbitrary command…" autocomplete="off">
+            <button type="submit">Run</button>
+          </form>
+          <pre id="pi-out" class="log"></pre>
         </div>
       </div>
 

@@ -163,9 +163,51 @@ function exec(command) {
   });
 }
 
+const termSessions = new Map(); // sessionId -> { conn, stream }
+
+function termStart(sessionId, { rows, cols }, onData, onClose) {
+  const t = resolveTarget();
+  if (!t.host) { onClose("No Pi remembered — run a scan first"); return; }
+  if (!lan.isPrivateIp(t.host)) { onClose("Refusing SSH to a non-LAN host"); return; }
+  const opts = sshConnectOptions(t);
+  if (!opts.privateKey && !opts.password) { onClose("SSH is not connected yet — set a key or saved password in Preferences"); return; }
+
+  const conn = new Client();
+  conn.on("ready", () => {
+    conn.shell({ term: "xterm-256color", rows: rows || 24, cols: cols || 80 }, (err, stream) => {
+      if (err) { onClose(String(err.message || err)); return; }
+      termSessions.set(sessionId, { conn, stream });
+      stream.on("data", (d) => onData(d.toString("utf8")));
+      stream.stderr.on("data", (d) => onData(d.toString("utf8")));
+      stream.on("close", () => { termSessions.delete(sessionId); onClose(null); });
+    });
+  });
+  conn.on("error", (e) => { onClose(String(e.message || e)); });
+  conn.connect(opts);
+}
+
+function termInput(sessionId, data) {
+  const s = termSessions.get(sessionId);
+  if (s) s.stream.write(data);
+}
+
+function termResize(sessionId, rows, cols) {
+  const s = termSessions.get(sessionId);
+  if (s) s.stream.setWindow(rows, cols, 0, 0);
+}
+
+function termStop(sessionId) {
+  const s = termSessions.get(sessionId);
+  if (!s) return;
+  try { s.stream.close(); } catch (e) { /* ignore */ }
+  try { s.conn.end(); } catch (e) { /* ignore */ }
+  termSessions.delete(sessionId);
+}
+
 module.exports = {
   resolveTarget, sshConnectOptions, exec, isDisruptive, disruptionSeconds,
   aptCheckUpdates, aptUpgradeCommand, installedApps, rebootRequired, hostStats,
+  termStart, termInput, termResize, termStop,
   get HOST() { return resolveTarget().host; },
   get SSH_PORT() { return resolveTarget().port; }
 };

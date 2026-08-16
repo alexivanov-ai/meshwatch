@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Tray, Menu, Notification, nativeImage } = require("electron");
 const path = require("path");
+const crypto = require("crypto");
 const db = require("./db");
 const discovery = require("./discovery");
 const pi = require("./pi");
@@ -14,6 +15,7 @@ let win = null;
 let tray = null;
 let scanTimer = null;
 let scanning = false;
+let activeTermSession = null;
 
 const THEME_BG = { light: "#f3f2f2", dark: "#161514" };
 
@@ -299,6 +301,25 @@ ipcMain.handle("shell:open", (_e, { url }) => {
   if (!browser.isLanUrl(url)) return { ok: false, reason: "not a local address" };
   return browser.open(url);
 });
+ipcMain.on("pi:term:start", (event, { rows, cols }) => {
+  if (activeTermSession) pi.termStop(activeTermSession); // one session at a time per Pi
+  const sessionId = crypto.randomUUID();
+  activeTermSession = sessionId;
+  event.reply("pi:term:started", { sessionId });
+  pi.termStart(
+    sessionId,
+    { rows, cols },
+    (chunk) => event.sender.send("pi:term:data", { sessionId, chunk }),
+    (errorOrNull) => {
+      event.sender.send("pi:term:closed", { sessionId, error: errorOrNull });
+      if (activeTermSession === sessionId) activeTermSession = null;
+    }
+  );
+});
+ipcMain.on("pi:term:input", (_e, { sessionId, data }) => pi.termInput(sessionId, data));
+ipcMain.on("pi:term:resize", (_e, { sessionId, rows, cols }) => pi.termResize(sessionId, rows, cols));
+ipcMain.on("pi:term:stop", (_e, { sessionId }) => pi.termStop(sessionId));
+
 ipcMain.handle("update:check", () => updater.checkNow());
 ipcMain.handle("update:install", () => updater.installNow());
 ipcMain.handle("app:version", () => app.getVersion());

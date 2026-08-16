@@ -40,6 +40,16 @@ contextBridge.exposeInMainWorld("meshwatch", {
     hostStats: () => ipcRenderer.invoke("pi:hostStats")
   },
 
+  terminal: {
+    start: (rows, cols) => ipcRenderer.send("pi:term:start", { rows, cols }),
+    input: (sessionId, data) => ipcRenderer.send("pi:term:input", { sessionId, data }),
+    resize: (sessionId, rows, cols) => ipcRenderer.send("pi:term:resize", { sessionId, rows, cols }),
+    stop: (sessionId) => ipcRenderer.send("pi:term:stop", { sessionId }),
+    onStarted: (cb) => ipcRenderer.on("pi:term:started", (_e, payload) => cb(payload)),
+    onData: (cb) => ipcRenderer.on("pi:term:data", (_e, payload) => cb(payload)),
+    onClosed: (cb) => ipcRenderer.on("pi:term:closed", (_e, payload) => cb(payload))
+  },
+
   tplink: {
     capabilities: (ip) => ipcRenderer.invoke("tplink:capabilities", { ip }),
     action: (ip, action, args) => ipcRenderer.invoke("tplink:action", { ip, action, args })

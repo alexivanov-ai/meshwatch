@@ -24,6 +24,43 @@ function disruptionSeconds(command) {
   return hit ? hit.seconds : 0;
 }
 
+const APT_SKIP_RE = /(-dev$|^lib|firmware|^linux-|raspberrypi-kernel|-dbg$|-dbgsym$)/;
+
+async function aptCheckUpdates() {
+  const update = await exec("sudo apt-get update -qq");
+  if (update.code) return { ok: false, reason: update.output.join("\n") };
+  const list = await exec("apt list --upgradable 2>/dev/null");
+  const packages = (list.output || [])
+    .filter((l) => l.indexOf("/") !== -1 && l.indexOf("Listing") === -1)
+    .map((l) => {
+      const name = l.split("/")[0];
+      return { name, newVersion: (l.match(/\s(\S+)\s+\[upgradable/) || [])[1] || null };
+    });
+  return { ok: true, count: packages.length, packages };
+}
+
+// Actual upgrade always goes through the pi:exec IPC handler (index.js),
+// which gates it behind the disruptive-command confirmation dialog — this
+// helper just builds the exact command string used for that.
+function aptUpgradeCommand() {
+  return "sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y";
+}
+
+async function installedApps() {
+  const r = await exec("apt-mark showmanual");
+  if (r.code) return { ok: false, reason: r.output.join("\n") };
+  const apps = (r.output || [])
+    .map((l) => l.trim())
+    .filter((l) => l && !APT_SKIP_RE.test(l))
+    .map((name) => ({ name }));
+  return { ok: true, apps };
+}
+
+async function rebootRequired() {
+  const r = await exec("test -f /var/run/reboot-required && echo yes || echo no");
+  return (r.output || []).join("").indexOf("yes") !== -1;
+}
+
 function resolveTarget() {
   const state = db.getPiState();
   return {
@@ -109,6 +146,7 @@ function exec(command) {
 
 module.exports = {
   resolveTarget, sshConnectOptions, exec, isDisruptive, disruptionSeconds,
+  aptCheckUpdates, aptUpgradeCommand, installedApps, rebootRequired,
   get HOST() { return resolveTarget().host; },
   get SSH_PORT() { return resolveTarget().port; }
 };

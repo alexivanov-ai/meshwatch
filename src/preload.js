@@ -32,7 +32,11 @@ contextBridge.exposeInMainWorld("meshwatch", {
     hasPassword: () => ipcRenderer.invoke("pi:hasPassword"),
     setPassword: (password) => ipcRenderer.invoke("pi:setPassword", { password }),
     pickKey: () => ipcRenderer.invoke("pi:pickKey"),
-    block: (mac, blocked) => ipcRenderer.invoke("pi:block", { mac, blocked })
+    block: (mac, blocked) => ipcRenderer.invoke("pi:block", { mac, blocked }),
+    aptCheck: () => ipcRenderer.invoke("pi:apt:check"),
+    aptUpgrade: () => ipcRenderer.invoke("pi:apt:upgrade"),
+    installedApps: () => ipcRenderer.invoke("pi:apt:apps"),
+    rebootRequired: () => ipcRenderer.invoke("pi:rebootRequired")
   },
 
   tplink: {

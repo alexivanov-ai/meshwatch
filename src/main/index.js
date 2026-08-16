@@ -225,7 +225,7 @@ ipcMain.handle("pi:pickKey", async () => {
   db.setSetting("pi_ssh_key", r.filePaths[0]);
   return { ok: true, path: r.filePaths[0] };
 });
-ipcMain.handle("pi:exec", async (_e, { command }) => {
+async function confirmedExec(command) {
   if (pi.isDisruptive(command)) {
     const { response } = await dialog.showMessageBox(win, {
       type: "warning",
@@ -241,7 +241,13 @@ ipcMain.handle("pi:exec", async (_e, { command }) => {
     if (response !== 1) return { cancelled: true, output: [] };
   }
   return pi.exec(command);
-});
+}
+
+ipcMain.handle("pi:exec", async (_e, { command }) => confirmedExec(command));
+ipcMain.handle("pi:apt:check", () => pi.aptCheckUpdates());
+ipcMain.handle("pi:apt:upgrade", async () => confirmedExec(pi.aptUpgradeCommand()));
+ipcMain.handle("pi:apt:apps", () => pi.installedApps());
+ipcMain.handle("pi:rebootRequired", () => pi.rebootRequired());
 ipcMain.handle("pi:block", async (_e, { mac, blocked }) => {
   const d = findByMac(mac);
   if (!d || !d.ip) return { ok: false, reason: "device has no address" };

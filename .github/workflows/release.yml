@@ -9,6 +9,10 @@ name: Build and release (Windows)
 # up as the installed exe's actual Windows file version (Explorer > Properties
 # > Details), via electron-builder's separate buildVersion option, which has
 # no such restriction.
+#
+# Auto-update (electron-updater) needs latest.yml + the .exe (+ .blockmap when
+# present) on the same GitHub Release. Installing a newer build with the same
+# appId replaces the previous install in place and keeps %APPDATA% data.
 
 on:
   push:
@@ -79,16 +83,28 @@ jobs:
         # electron-builder detects CI and defaults to trying its own GitHub
         # publish step, which needs GH_TOKEN we don't set - we publish
         # ourselves via softprops/action-gh-release below instead.
+        # --publish never still writes latest.yml (required by electron-updater).
         run: npm run build:win -- --config.buildVersion=${{ steps.version.outputs.build_version }} --publish never
 
-      - name: Find installer
+      - name: Find release artifacts
         id: artifact
         shell: bash
         run: |
           set -euo pipefail
-          FILE=$(ls dist/*.exe | head -n 1)
-          echo "Found installer: $FILE"
-          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+          ls -la dist/
+          # Installer + latest.yml (+ blockmap if present) for in-app updates.
+          mapfile -t FILES < <(ls dist/*.exe dist/latest.yml dist/*.blockmap 2>/dev/null || true)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "No release artifacts found in dist/" >&2
+            exit 1
+          fi
+          echo "Found artifacts:"
+          printf '  %s\n' "${FILES[@]}"
+          {
+            echo "paths<<EOF"
+            printf '%s\n' "${FILES[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -97,4 +113,4 @@ jobs:
           name: "Meshwatch ${{ steps.version.outputs.version }}"
           generate_release_notes: true
           make_latest: true
-          files: ${{ steps.artifact.outputs.path }}
+          files: ${{ steps.artifact.outputs.paths }}

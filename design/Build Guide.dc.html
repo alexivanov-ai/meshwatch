@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-f086377c-af25-4a3a-8d7a-bc19a032e20e/styles.css">
+<script src="_ds/modernist-f086377c-af25-4a3a-8d7a-bc19a032e20e/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&display=swap" rel="stylesheet">
+<script src="./doc-page.js"></script>
+<style>
+  doc-page:not(:defined) { visibility: hidden; }
+  a { color: var(--color-accent-700); }
+  a:hover { color: var(--color-accent); }
+</style>
+</helmet>
+
+<template id="__bundler_thumbnail"><svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect width="200" height="200" fill="#f3f2f2"/><rect x="60" y="52" width="80" height="96" fill="#201e1d"/><rect x="72" y="70" width="44" height="6" fill="#f3f2f2"/><rect x="72" y="86" width="56" height="6" fill="#ec3013"/><rect x="72" y="102" width="50" height="6" fill="#f3f2f2"/><rect x="72" y="118" width="36" height="6" fill="#f3f2f2"/></svg></template>
+<doc-page margin="0.8in">
+
+  <div slot="header" style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 2px solid var(--color-divider); font-family: var(--font-heading); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;">
+    <span>Meshwatch — build guide</span>
+    <span style="opacity: 0.55;">Windows first, macOS second</span>
+  </div>
+
+  <div slot="footer" style="padding-top: 6px; border-top: 1px solid var(--color-neutral-300); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.55;">
+    Written for someone who can copy and paste commands
+  </div>
+
+  <h1 style="font-size: 40px; line-height: 1.05; margin: 0 0 10px;">Building Meshwatch with Claude Code</h1>
+
+  <p style="font-size: 16px; line-height: 1.6; max-width: 46em;">This turns the prototype into a real installable desktop app that scans your network, talks to your TP-Link gear, reads Pi-hole, and audits firmware. You will not write code — you will paste prompts into Claude Code and paste commands into a terminal. Budget a weekend for a working v1, and expect the TP-Link parts to be the fiddly bit.</p>
+
+  <hr class="hr">
+
+  <h2 style="font-size: 22px; margin: 24px 0 8px;">1 · What you end up with</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">An <strong>Electron</strong> app. Electron is the same technology behind Slack and VS Code: a desktop window wrapped around a web page, with full access to your network from the Node.js layer underneath. It matters here for three reasons — the prototype's interface transfers almost directly, the network-scanning libraries you need already exist in JavaScript, and one config file produces both a Windows <code>.exe</code> installer and a macOS <code>.dmg</code>.</p>
+
+  <p style="font-size: 15px; line-height: 1.65;">The alternative, Tauri, produces much smaller apps but needs Rust. For a first build with Claude Code doing the work, Electron is the safer road.</p>
+
+  <div style="border: 2px solid var(--color-divider); padding: 16px 18px; margin: 18px 0; break-inside: avoid;">
+    <div style="font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px;">One honest limit up front</div>
+    <p style="font-size: 14px; line-height: 1.6; margin: 0;">You can build the Windows installer on Windows. You <strong>cannot</strong> build a macOS <code>.dmg</code> on a Windows machine — Apple's tooling only runs on macOS. You have a MacBook Pro, so run the same project there when you want the <code>.dmg</code>. The code is identical; only the build command differs.</p>
+  </div>
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">2 · Install four things</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">On the Windows machine, in this order:</p>
+
+  <table class="table" style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 14px 0;">
+    <thead>
+      <tr>
+        <th style="text-align: left; padding: 8px 10px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">What</th>
+        <th style="text-align: left; padding: 8px 10px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Where</th>
+        <th style="text-align: left; padding: 8px 10px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Why</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;"><strong>Node.js LTS</strong></td>
+        <td style="padding: 9px 10px;">nodejs.org — the left-hand "LTS" button</td>
+        <td style="padding: 9px 10px;">Runs the app and the build tools</td>
+      </tr>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;"><strong>Git</strong></td>
+        <td style="padding: 9px 10px;">git-scm.com</td>
+        <td style="padding: 9px 10px;">Version history, so a bad change is undoable</td>
+      </tr>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;"><strong>VS Code</strong></td>
+        <td style="padding: 9px 10px;">code.visualstudio.com</td>
+        <td style="padding: 9px 10px;">Where you will run Claude Code and see the files</td>
+      </tr>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;"><strong>Npcap</strong></td>
+        <td style="padding: 9px 10px;">npcap.com — tick "WinPcap API-compatible mode"</td>
+        <td style="padding: 9px 10px;">Lets Windows do raw ARP scanning. Without it, discovery finds far less</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="font-size: 15px; line-height: 1.65;">Then install Claude Code. Open VS Code, press <code>Ctrl + `</code> to open its terminal, and paste:</p>
+
+  <pre style="background: #201e1d; color: #d7d3d3; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.7; padding: 14px 16px; margin: 12px 0; overflow-x: auto; break-inside: avoid;">npm install -g @anthropic-ai/claude-code</pre>
+
+  <p style="font-size: 15px; line-height: 1.65;">Make the project folder and start Claude Code inside it:</p>
+
+  <pre style="background: #201e1d; color: #d7d3d3; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.7; padding: 14px 16px; margin: 12px 0; overflow-x: auto; break-inside: avoid;">mkdir %USERPROFILE%\meshwatch
+cd %USERPROFILE%\meshwatch
+git init
+claude</pre>
+
+  <p style="font-size: 15px; line-height: 1.65;">It will ask you to sign in the first time. From here on, everything in sections 3 to 7 is text you paste at the <code>&gt;</code> prompt, one section at a time. <strong>Do not paste them all at once.</strong> Let each phase finish and check it works before moving on.</p>
+
+  <hr class="hr">
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">3 · The opening prompt</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">This sets up the project skeleton and tells Claude Code the shape of the whole thing. Paste it whole:</p>
+
+  <div style="border-left: 4px solid var(--color-accent); background: var(--color-neutral-100); padding: 16px 18px; margin: 14px 0; font-size: 14px; line-height: 1.65;">
+    <p style="margin: 0 0 10px;">Build me an Electron desktop app called Meshwatch. I am not a developer — explain nothing unless I ask, but tell me clearly whenever I need to run a command or make a decision.</p>
+    <p style="margin: 0 0 10px;">It is a local network monitoring dashboard for my home network, 192.168.0.0/24. The gateway is a TP-Link Archer BE220 at 192.168.0.1. A Raspberry Pi 5 at 192.168.0.2 runs Pi-hole and is the DHCP and DNS server for the whole network; I reach it over SSH on port 2222.</p>
+    <p style="margin: 0 0 10px;">Set up the project now: Electron with a main process and a renderer, electron-builder configured for a Windows NSIS installer and a macOS dmg, and secure IPC (contextIsolation on, a preload script exposing a narrow API — never enable nodeIntegration in the renderer). Use plain HTML, CSS and JavaScript in the renderer, no framework and no build step for the UI. Store data in a local SQLite file via better-sqlite3 so device history survives restarts.</p>
+    <p style="margin: 0;">Create a CLAUDE.md recording those facts about my network so you remember them in future sessions. Then show me how to run the app in development, and stop — I want to see an empty window open before we go further.</p>
+  </div>
+
+  <p style="font-size: 15px; line-height: 1.65;">When it finishes, it will tell you to run something like <code>npm start</code>. An empty window should appear. That empty window is the milestone — if it opens, the hard scaffolding is done.</p>
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">4 · Discovery — the engine</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">This is the part that actually finds your devices, and it is worth doing before any interface. Four discovery methods overlap; together they identify far more than any one alone.</p>
+
+  <div style="border-left: 4px solid var(--color-accent); background: var(--color-neutral-100); padding: 16px 18px; margin: 14px 0; font-size: 14px; line-height: 1.65;">
+    <p style="margin: 0 0 10px;">Now build the discovery engine in the main process. It should run four scans and merge the results into one device list keyed by MAC address:</p>
+    <p style="margin: 0 0 10px;">1. ARP sweep across 192.168.0.1–254 to get every IP and MAC that answers. 2. mDNS/Bonjour browse to pick up Apple devices, the Sony TV and the printer-style services. 3. SSDP/UPnP discovery — this is how the GREE air conditioner and the PlayStation announce themselves. 4. DHCP lease list read from the Pi-hole over SSH, which gives real hostnames the other three methods miss.</p>
+    <p style="margin: 0 0 10px;">Resolve each MAC's manufacturer from the IEEE OUI prefix list — bundle the list locally, do not call a web service. Treat the DHCP hostname as the best name, the mDNS name as second best, then the OUI vendor, then "Unidentified host".</p>
+    <p style="margin: 0 0 10px;">Infer the topology as a tree: the BE220 is the root; the Raspberry Pi, the unmanaged 8-port switch, the RE450 extender, the TL-WA1201 extender, an Archer AX20 in AP mode, an old TL-WDR4300 and a Broadcom access point sit under it; clients hang off whichever node they associated with. Get parentage from each TP-Link node's client table where you can, and from RSSI plus lease origin where you cannot. Mark every inferred link clearly as an estimate — I would rather see "estimated" than a confident wrong answer.</p>
+    <p style="margin: 0;">Save every scan to SQLite with a timestamp so I can see when a device first appeared and when it was last seen. Then write me a command-line test I can run to print the discovered device list, so I can check it against what I know is on my network.</p>
+  </div>
+
+  <p style="font-size: 15px; line-height: 1.65;">Run its test. Compare the output against your real kit. If devices are missing, say so plainly — <em>"the GREE air conditioner and the Broadcom AP did not appear, find out why"</em> — and let it investigate. This is the phase to be stubborn about; everything else is built on it.</p>
+
+  <div style="border: 2px solid var(--color-divider); padding: 16px 18px; margin: 18px 0; break-inside: avoid;">
+    <div style="font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px;">Run it as administrator</div>
+    <p style="font-size: 14px; line-height: 1.6; margin: 0;">Raw ARP scanning needs elevated privileges on Windows. If the scan returns almost nothing, close VS Code, right-click it, choose "Run as administrator" and try again. Ask Claude Code to make the finished app request elevation on launch.</p>
+  </div>
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">5 · The Pi-hole and the SSH console</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">The Pi is the most rewarding piece to wire up, because it is the one device with a real API and a real shell — and because it holds the DHCP truth that names everything else.</p>
+
+  <div style="border-left: 4px solid var(--color-accent); background: var(--color-neutral-100); padding: 16px 18px; margin: 14px 0; font-size: 14px; line-height: 1.65;">
+    <p style="margin: 0 0 10px;">Now add Pi-hole integration for the Raspberry Pi 5 at 192.168.0.2. Use two channels: Pi-hole's REST API for statistics (query totals, percentage blocked, top blocked domains, the DHCP lease table), and SSH on port 2222 via the ssh2 library for shell commands.</p>
+    <p style="margin: 0 0 10px;">Authenticate SSH with a key, not a password. Walk me through generating the key on this machine and installing it on the Pi, one command at a time, and check it works before continuing. Store the key path and the Pi-hole API token in the OS credential store — Windows Credential Manager, macOS Keychain — never in a config file in the project.</p>
+    <p style="margin: 0 0 10px;">Give me a panel with a terminal-style output area and buttons for the commands I actually use: pihole status, pihole -g to rebuild gravity, restart pihole-FTL, list DHCP leases, show top clients, check CPU temperature and disk space, and check for apt updates. Any command that interrupts DNS for the whole house — restarting FTL, rebooting the Pi — must ask me to confirm first and warn me how long name resolution will be down.</p>
+    <p style="margin: 0;">Also let me type an arbitrary command into the panel and see its output.</p>
+  </div>
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">6 · TP-Link control</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">Read this section before you paste it. TP-Link publishes no official local API for consumer routers like the BE220. Community libraries reverse-engineer the encrypted local endpoint the Tether app uses, and firmware updates sometimes break them. Expect this phase to be the least reliable, and expect to fall back to opening the router's own web page for some actions.</p>
+
+  <div style="border-left: 4px solid var(--color-accent); background: var(--color-neutral-100); padding: 16px 18px; margin: 14px 0; font-size: 14px; line-height: 1.65;">
+    <p style="margin: 0 0 10px;">Now add TP-Link device control. My devices: Archer BE220 (gateway, 192.168.0.1), Archer AX20 in AP mode, RE450 extender, TL-WA1201 extender, and an old TL-WDR4300 that is end-of-life.</p>
+    <p style="margin: 0 0 10px;">First, research and tell me honestly which of these can be controlled locally and which cannot, before writing any code. There is no official local API, so tell me which community library you propose, how actively maintained it is, and what breaks if TP-Link changes firmware. I would rather have five working actions and honest gaps than nine that fail silently.</p>
+    <p style="margin: 0 0 10px;">Then implement what is genuinely possible, aiming for: reboot, firmware version check and update, SSID and password per band, band steering and channel selection, the per-node client list, port forwarding rules, a WAN speed test, LED on/off with a schedule, and mesh backhaul signal health.</p>
+    <p style="margin: 0 0 10px;">Store router credentials in the OS credential store. Every action that interrupts connectivity must ask for confirmation. Where an action cannot be done through the API, give me a button that opens that device's own admin page in my browser instead of a button that pretends to work.</p>
+    <p style="margin: 0;">Treat the TL-WDR4300 as legacy: read-only, flagged as end-of-support, no control attempted.</p>
+  </div>
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">7 · The security audit</h2>
+
+  <div style="border-left: 4px solid var(--color-accent); background: var(--color-neutral-100); padding: 16px 18px; margin: 14px 0; font-size: 14px; line-height: 1.65;">
+    <p style="margin: 0 0 10px;">Now add the security audit. For every discovered device, check what can be checked and be explicit about what cannot:</p>
+    <p style="margin: 0 0 10px;">Compare the running firmware against the latest release where a vendor feed exists. Flag devices past end of support — my TL-WDR4300 is one. Scan common service ports on each host and flag risky ones: telnet 23, raw print 9100, unauthenticated UPnP, and the GREE air conditioner's UDP 7000 local API. Flag any device whose MAC matches no vendor and that has no DHCP hostname. Check the router for WPS enabled, UPnP enabled, remote management exposed to the WAN, and admin interfaces served over plain HTTP.</p>
+    <p style="margin: 0 0 10px;">For the four devices with no management API — the unmanaged switch, the Broadcom AP, the GREE unit, and anything unidentified — infer what you can from ARP timing, lease history and how long they have been seen, and label every inferred value clearly as an estimate. Let me hand-record a firmware version I have read off the device myself, so age warnings still work for them.</p>
+    <p style="margin: 0 0 10px;">Give each finding a severity, a plain-English explanation of the actual risk, and one concrete action. Compute an overall score. Cite the CVE where a real one applies and say "unverifiable" where none can be established — never invent one.</p>
+    <p style="margin: 0;">Add per-device internet blocking, applied through Pi-hole for DNS-level blocking and through the router where a MAC filter is available.</p>
+  </div>
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">8 · Making it look like the prototype</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">Export the prototype from this project as a standalone HTML file and drop it into the project folder. Then:</p>
+
+  <div style="border-left: 4px solid var(--color-accent); background: var(--color-neutral-100); padding: 16px 18px; margin: 14px 0; font-size: 14px; line-height: 1.65;">
+    <p style="margin: 0;">I have put a design prototype at <code>prototype.html</code> in this folder. Read it and rebuild the app's interface to match it exactly — the same layout, spacing, type, colours and interaction structure: sidebar navigation, overview with statistics and a needs-attention list, inventory table with filters, topology tree, security audit, the Pi-hole and SSH view, discovery progress with a live log, and preferences. Wire every part to the real data from the engine you already built. The prototype's data is invented; replace all of it, keep the design.</p>
+  </div>
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">9 · Building the installers</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">On Windows, this produces an installer in a <code>dist</code> folder:</p>
+
+  <pre style="background: #201e1d; color: #d7d3d3; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.7; padding: 14px 16px; margin: 12px 0; overflow-x: auto; break-inside: avoid;">npm run build:win</pre>
+
+  <p style="font-size: 15px; line-height: 1.65;">Copy the whole project folder to your MacBook Pro, run <code>npm install</code> there, then:</p>
+
+  <pre style="background: #201e1d; color: #d7d3d3; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.7; padding: 14px 16px; margin: 12px 0; overflow-x: auto; break-inside: avoid;">npm run build:mac</pre>
+
+  <p style="font-size: 15px; line-height: 1.65;">Both installers will warn on first launch that the app is from an unidentified developer, because it is unsigned. On Windows, click "More info" then "Run anyway". On macOS, right-click the app and choose "Open". Signing certificates cost money annually and are only worth it if you distribute the app to other people; for your own machines, ignore the warning.</p>
+
+  <hr class="hr">
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">10 · What will go wrong</h2>
+
+  <table class="table" style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 14px 0;">
+    <thead>
+      <tr>
+        <th style="text-align: left; padding: 8px 10px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Symptom</th>
+        <th style="text-align: left; padding: 8px 10px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Cause and fix</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;">Scan finds three devices</td>
+        <td style="padding: 9px 10px;">Not running as administrator, or Npcap missing. Both, usually.</td>
+      </tr>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;">Phones appear and vanish</td>
+        <td style="padding: 9px 10px;">Correct behaviour. Private MAC randomisation and Wi-Fi sleep. Ask for a grace period before marking a device offline.</td>
+      </tr>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;">Router control fails after a firmware update</td>
+        <td style="padding: 9px 10px;">The community library broke. Expected. Fall back to the web admin page and ask Claude Code to update the library.</td>
+      </tr>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;">The whole house loses internet mid-build</td>
+        <td style="padding: 9px 10px;">You restarted Pi-hole FTL or rebooted the Pi. It comes back. This is why those actions need confirmation dialogs.</td>
+      </tr>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;">Port scanning trips your own security software</td>
+        <td style="padding: 9px 10px;">Your antivirus is doing its job. Whitelist the app. Only ever scan your own network.</td>
+      </tr>
+      <tr style="border-top: 1px solid var(--color-neutral-300);">
+        <td style="padding: 9px 10px;"><code>better-sqlite3</code> won't install</td>
+        <td style="padding: 9px 10px;">Native module needs build tools. Ask Claude Code to fix it — it knows the incantation.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size: 22px; margin: 28px 0 8px;">11 · Habits worth keeping</h2>
+
+  <p style="font-size: 15px; line-height: 1.65;">Commit after every phase that works — type <em>"commit this with a clear message"</em> and Claude Code handles it. That gives you a point to return to when something breaks. Keep <code>CLAUDE.md</code> up to date with anything about your network you find yourself re-explaining; it is read at the start of every session. And when something does not work, describe the symptom rather than guessing the cause — <em>"the GREE unit shows as unidentified even though I know its IP is 192.168.0.32"</em> gets you further than a theory about ARP.</p>
+
+  <p style="font-size: 15px; line-height: 1.65;">Finally: build the phases in the order above. The temptation is to make it pretty first. Discovery is the app — if it finds your devices reliably, everything else is decoration you already have designed.</p>
+
+</doc-page>
+
+</x-dc>
+</body>
+</html>

@@ -77,3 +77,14 @@ devices, nothing built on top of it is worth anything.
 `npm run build:win` produces a Windows installer in `dist/`.
 `npm run build:mac` produces a macOS `.dmg` - this only works on a Mac.
 Both are unsigned, so the first launch shows a warning you can click past.
+
+## Updates
+
+Same `appId` means a newer Windows installer upgrades the existing install in
+place - no uninstall first. Scan history, notes and saved device passwords live
+under the OS user-data folder and are kept across upgrades.
+
+Installed builds also check GitHub Releases on launch (`electron-updater`).
+When a newer release is ready they offer Restart now; that applies the update
+without you downloading the installer by hand. Dev mode (`npm start`) skips
+update checks.

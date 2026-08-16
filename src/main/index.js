@@ -6,6 +6,7 @@ const pihole = require("./pihole");
 const tplink = require("./tplink");
 const audit = require("./audit");
 const credentials = require("./credentials");
+const updater = require("./updater");
 
 let win = null;
 
@@ -31,6 +32,7 @@ function createWindow() {
 app.whenReady().then(() => {
   db.init();
   createWindow();
+  updater.setup();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -114,3 +116,7 @@ ipcMain.handle("shell:open", (_e, { url }) => {
   shell.openExternal(url);
   return { ok: true };
 });
+
+ipcMain.handle("update:check", () => updater.checkNow());
+ipcMain.handle("update:install", () => updater.installNow());
+ipcMain.handle("app:version", () => app.getVersion());

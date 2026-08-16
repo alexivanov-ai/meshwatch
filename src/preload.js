@@ -32,6 +32,15 @@ contextBridge.exposeInMainWorld("meshwatch", {
 
   openExternal: (url) => ipcRenderer.invoke("shell:open", { url }),
 
+  version: () => ipcRenderer.invoke("app:version"),
+  checkForUpdate: () => ipcRenderer.invoke("update:check"),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
+  onUpdateStatus: (cb) => {
+    const handler = (_e, payload) => cb(payload);
+    ipcRenderer.on("update:status", handler);
+    return () => ipcRenderer.removeListener("update:status", handler);
+  },
+
   // Progress events during a scan
   onScanProgress: (cb) => {
     const handler = (_e, payload) => cb(payload);

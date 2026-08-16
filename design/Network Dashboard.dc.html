@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-f086377c-af25-4a3a-8d7a-bc19a032e20e/styles.css">
+<script src="_ds/modernist-f086377c-af25-4a3a-8d7a-bc19a032e20e/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #4a4746; }
+  a { color: var(--color-accent); }
+  a:hover { color: var(--color-accent-700); }
+</style>
+</helmet>
+
+<template id="__bundler_thumbnail"><svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect width="200" height="200" fill="#201e1d"/><rect x="60" y="60" width="18" height="18" fill="#ec3013"/><rect x="122" y="60" width="18" height="18" fill="#f3f2f2"/><rect x="60" y="122" width="18" height="18" fill="#f3f2f2"/><rect x="122" y="122" width="18" height="18" fill="#f3f2f2"/><rect x="76" y="68" width="48" height="2" fill="#f3f2f2"/><rect x="68" y="76" width="2" height="48" fill="#f3f2f2"/><rect x="130" y="76" width="2" height="48" fill="#f3f2f2"/><rect x="76" y="130" width="48" height="2" fill="#f3f2f2"/></svg></template>
+<div style="width: 1480px; height: 960px; margin: 0 auto; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); display: flex; flex-direction: column; overflow: hidden; border: 2px solid #201e1d;">
+
+  <div style="height: 38px; flex: none; display: flex; align-items: stretch; justify-content: space-between; background: #201e1d; color: #f3f2f2;">
+    <div style="display: flex; align-items: center; gap: 10px; padding-left: 12px;">
+      <div style="width: 14px; height: 14px; background: var(--color-accent);"></div>
+      <span style="font-family: var(--font-heading); font-weight: 800; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;">Meshwatch</span>
+      <span style="font-size: 11px; opacity: 0.5; letter-spacing: 0.04em;">192.168.0.0/24 · gateway Archer BE220 · DNS + DHCP on Pi-hole</span>
+    </div>
+    <div style="display: flex; align-items: stretch;">
+      <sc-for list="{{ chromeButtons }}" as="cb" hint-placeholder-count="3">
+        <button onClick="{{ cb.onClick }}" style="width: 44px; border: 0; background: transparent; color: #f3f2f2; font-size: 12px; cursor: default; display: flex; align-items: center; justify-content: center;" style-hover="background: rgba(255,255,255,0.14)">{{ cb.glyph }}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0;">
+
+    <div style="width: 240px; flex: none; border-right: 2px solid var(--color-divider); display: flex; flex-direction: column; background: var(--color-neutral-100);">
+      <div style="padding: 20px 16px 14px;">
+        <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55; margin-bottom: 8px;">Network</div>
+        <div style="font-family: var(--font-heading); font-weight: 800; font-size: 19px; line-height: 1.1;">Home</div>
+        <div style="display: flex; gap: 6px; margin-top: 10px; font-size: 11px;">
+          <span style="border: 1px solid var(--color-divider); padding: 2px 6px;">{{ onlineCount }} online</span>
+          <span style="border: 1px solid var(--color-divider); padding: 2px 6px; opacity: 0.6;">{{ offlineCount }} off</span>
+        </div>
+      </div>
+      <div style="height: 2px; background: var(--color-divider);"></div>
+
+      <div style="flex: 1; overflow-y: auto; padding: 8px 0;">
+        <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="7">
+          <button onClick="{{ item.onClick }}" style="width: 100%; border: 0; border-left: 3px solid {{ item.mark }}; background: {{ item.bg }}; color: var(--color-text); font-family: var(--font-heading); font-weight: {{ item.weight }}; font-size: 13px; text-align: left; padding: 10px 14px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px;" style-hover="background: var(--color-neutral-200)">
+            <span>{{ item.label }}</span>
+            <span style="font-size: 11px; font-weight: 500; color: {{ item.badgeColor }}">{{ item.badge }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="height: 2px; background: var(--color-divider);"></div>
+      <div style="padding: 14px 16px;">
+        <button onClick="{{ startScan }}" class="btn btn-primary btn-block" style="justify-content: flex-start; width: 100%;">{{ scanButtonLabel }}</button>
+        <div style="font-size: 11px; opacity: 0.55; margin-top: 8px;">Last sweep 4 minutes ago</div>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+
+      <div style="flex: none; padding: 22px 28px 16px; border-bottom: 2px solid var(--color-divider); display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+        <div>
+          <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55;">{{ viewKicker }}</div>
+          <h2 style="font-size: 30px; margin: 4px 0 0;">{{ viewTitle }}</h2>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Search name, IP, MAC, vendor" class="input" style="width: 280px;">
+          <button onClick="{{ startScan }}" class="btn btn-secondary">Rescan</button>
+        </div>
+      </div>
+
+      <div style="flex: 1; overflow-y: auto; min-height: 0;">
+
+        <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr);">
+              <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+                <div style="padding: 22px 24px; border-right: 2px solid var(--color-divider); border-bottom: 2px solid var(--color-divider);">
+                  <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55;">{{ s.label }}</div>
+                  <div style="font-family: var(--font-heading); font-weight: 800; font-size: 40px; line-height: 1.05; margin-top: 6px; color: {{ s.color }}">{{ s.value }}</div>
+                  <div style="font-size: 12px; opacity: 0.6; margin-top: 2px;">{{ s.note }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1.35fr 1fr;">
+              <div style="border-right: 2px solid var(--color-divider); padding: 22px 24px;">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px;">
+                  <h4 style="font-size: 15px; margin: 0; letter-spacing: 0.06em; text-transform: uppercase;">Needs attention</h4>
+                  <button onClick="{{ goSecurity }}" class="btn btn-ghost">Full audit</button>
+                </div>
+                <sc-for list="{{ attention }}" as="a" hint-placeholder-count="5">
+                  <button onClick="{{ a.onClick }}" style="width: 100%; text-align: left; background: transparent; border: 0; border-top: 1px solid var(--color-neutral-300); padding: 13px 0; cursor: pointer; display: grid; grid-template-columns: 6px 1fr auto; gap: 12px; align-items: center;" style-hover="background: var(--color-neutral-200)">
+                    <span style="width: 6px; height: 26px; background: {{ a.color }}"></span>
+                    <span>
+                      <span style="display: block; font-family: var(--font-heading); font-weight: 600; font-size: 14px;">{{ a.device }}</span>
+                      <span style="display: block; font-size: 12px; opacity: 0.65;">{{ a.issue }}</span>
+                    </span>
+                    <span style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: {{ a.color }}">{{ a.severity }}</span>
+                  </button>
+                </sc-for>
+              </div>
+
+              <div style="padding: 22px 24px;">
+                <h4 style="font-size: 15px; margin: 0 0 14px; letter-spacing: 0.06em; text-transform: uppercase;">Top talkers, last hour</h4>
+                <sc-for list="{{ talkers }}" as="t" hint-placeholder-count="5">
+                  <div style="border-top: 1px solid var(--color-neutral-300); padding: 11px 0;">
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                      <span style="font-weight: 600;">{{ t.name }}</span>
+                      <span style="font-variant-numeric: tabular-nums; opacity: 0.7;">{{ t.amount }}</span>
+                    </div>
+                    <div style="height: 6px; background: var(--color-neutral-300); margin-top: 6px;">
+                      <div style="height: 6px; background: var(--color-text); width: {{ t.width }}"></div>
+                    </div>
+                  </div>
+                </sc-for>
+
+                <h4 style="font-size: 15px; margin: 26px 0 14px; letter-spacing: 0.06em; text-transform: uppercase;">Clients per node</h4>
+                <sc-for list="{{ nodeLoad }}" as="n" hint-placeholder-count="5">
+                  <div style="border-top: 1px solid var(--color-neutral-300); padding: 11px 0; display: flex; justify-content: space-between; gap: 10px; font-size: 13px;">
+                    <span style="font-weight: 600;">{{ n.name }}</span>
+                    <span style="opacity: 0.6; font-variant-numeric: tabular-nums;">{{ n.clients }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isDevices }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="display: flex; border-bottom: 2px solid var(--color-divider);">
+              <sc-for list="{{ filters }}" as="f" hint-placeholder-count="6">
+                <button onClick="{{ f.onClick }}" style="border: 0; border-right: 1px solid var(--color-neutral-300); background: {{ f.bg }}; color: {{ f.fg }}; font-family: var(--font-heading); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; padding: 12px 18px; cursor: pointer;" style-hover="background: var(--color-neutral-200)">{{ f.label }}</button>
+              </sc-for>
+            </div>
+
+            <table class="table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <thead>
+                <tr>
+                  <th style="text-align: left; padding: 11px 24px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Device</th>
+                  <th style="text-align: left; padding: 11px 12px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Type</th>
+                  <th style="text-align: left; padding: 11px 12px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Address</th>
+                  <th style="text-align: left; padding: 11px 12px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Connected via</th>
+                  <th style="text-align: left; padding: 11px 12px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Firmware</th>
+                  <th style="text-align: left; padding: 11px 24px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;">Risk</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ rows }}" as="d" hint-placeholder-count="12">
+                  <tr onClick="{{ d.onClick }}" style="cursor: pointer; border-top: 1px solid var(--color-neutral-300); background: {{ d.rowBg }}" style-hover="background: var(--color-neutral-200)">
+                    <td style="padding: 13px 24px;">
+                      <span style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 8px; height: 8px; background: {{ d.dot }}; flex: none;"></span>
+                        <span>
+                          <span style="display: block; font-weight: 600;">{{ d.name }}</span>
+                          <span style="display: block; font-size: 11px; opacity: 0.55;">{{ d.vendor }}</span>
+                        </span>
+                      </span>
+                    </td>
+                    <td style="padding: 13px 12px; opacity: 0.8;">
+                      <span style="display: block;">{{ d.type }}</span>
+                      <span style="display: block; font-size: 11px; opacity: 0.7; color: {{ d.controlColor }}">{{ d.control }}</span>
+                    </td>
+                    <td style="padding: 13px 12px; font-variant-numeric: tabular-nums;">
+                      <span style="display: block;">{{ d.ip }}</span>
+                      <span style="display: block; font-size: 11px; opacity: 0.5;">{{ d.mac }}</span>
+                    </td>
+                    <td style="padding: 13px 12px; opacity: 0.8;">
+                      <span style="display: block;">{{ d.parentName }}</span>
+                      <span style="display: block; font-size: 11px; opacity: 0.65;">{{ d.link }}</span>
+                    </td>
+                    <td style="padding: 13px 12px; font-variant-numeric: tabular-nums;">
+                      <span style="display: block;">{{ d.fwLabel }}</span>
+                      <span style="display: block; font-size: 11px; opacity: 0.55;">{{ d.fwSource }}</span>
+                    </td>
+                    <td style="padding: 13px 24px;">
+                      <span style="font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid {{ d.riskColor }}; color: {{ d.riskColor }}; padding: 2px 7px; display: inline-block;">{{ d.riskLabel }}</span>
+                    </td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isMap }}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 24px 28px;">
+            <div style="font-size: 12px; opacity: 0.6; margin-bottom: 18px; max-width: 700px; text-wrap: pretty;">Uplink inferred from DHCP lease origin, per-node client tables and RSSI. Branches under the unmanaged switch and the Broadcom AP are estimated — those devices report nothing upstream.</div>
+            <sc-for list="{{ treeRows }}" as="t" hint-placeholder-count="10">
+              <button onClick="{{ t.onClick }}" style="width: 100%; text-align: left; background: {{ t.bg }}; border: 0; border-top: 1px solid var(--color-neutral-300); cursor: pointer; padding: 0;" style-hover="background: var(--color-neutral-200)">
+                <span style="display: flex; align-items: center; gap: 14px; padding: 12px 8px 12px {{ t.indent }};">
+                  <span style="width: 10px; height: 10px; flex: none; background: {{ t.dot }}; border: {{ t.ring }};"></span>
+                  <span style="flex: 1; min-width: 0;">
+                    <span style="display: block; font-family: var(--font-heading); font-weight: {{ t.weight }}; font-size: 14px;">{{ t.name }}</span>
+                    <span style="display: block; font-size: 11px; opacity: 0.6;">{{ t.sub }}</span>
+                  </span>
+                  <span style="font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; flex: none;">{{ t.right }}</span>
+                  <span style="font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: {{ t.badgeColor }}; width: 110px; text-align: right; flex: none;">{{ t.badge }}</span>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSecurity }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="display: grid; grid-template-columns: 280px 1fr; border-bottom: 2px solid var(--color-divider);">
+              <div style="padding: 24px; border-right: 2px solid var(--color-divider);">
+                <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55;">Posture score</div>
+                <div style="font-family: var(--font-heading); font-weight: 800; font-size: 76px; line-height: 1; margin: 6px 0 4px; color: var(--color-accent);">54</div>
+                <div style="font-size: 12px; opacity: 0.65; text-wrap: pretty;">The TL-WDR4300 and the GREE controller carry most of the loss — both are past vendor support.</div>
+              </div>
+              <div style="padding: 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;">
+                <sc-for list="{{ auditCounts }}" as="c" hint-placeholder-count="3">
+                  <div>
+                    <div style="font-family: var(--font-heading); font-weight: 800; font-size: 34px; color: {{ c.color }}">{{ c.n }}</div>
+                    <div style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7;">{{ c.label }}</div>
+                    <div style="font-size: 12px; opacity: 0.6; margin-top: 4px;">{{ c.note }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <sc-for list="{{ findings }}" as="f" hint-placeholder-count="6">
+              <div style="padding: 18px 24px; border-bottom: 1px solid var(--color-neutral-300); display: grid; grid-template-columns: 6px 1fr 220px; gap: 18px; align-items: start;">
+                <span style="width: 6px; height: 100%; min-height: 52px; background: {{ f.color }}"></span>
+                <span>
+                  <span style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-family: var(--font-heading); font-weight: 800; font-size: 15px;">{{ f.title }}</span>
+                    <span style="font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: {{ f.color }}">{{ f.severity }}</span>
+                  </span>
+                  <span style="display: block; font-size: 13px; opacity: 0.75; margin-top: 4px; max-width: 660px; text-wrap: pretty;">{{ f.detail }}</span>
+                  <span style="display: block; font-size: 12px; opacity: 0.55; margin-top: 6px;">{{ f.device }} · {{ f.ip }} · {{ f.cve }}</span>
+                </span>
+                <span style="display: flex; flex-direction: column; gap: 6px;">
+                  <button onClick="{{ f.onFix }}" class="btn btn-primary" style="justify-content: flex-start;">{{ f.action }}</button>
+                  <button onClick="{{ f.onOpen }}" class="btn btn-secondary" style="justify-content: flex-start;">Open device</button>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isPihole }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 2px solid var(--color-divider);">
+              <sc-for list="{{ piStats }}" as="s" hint-placeholder-count="4">
+                <div style="padding: 20px 24px; border-right: 2px solid var(--color-divider);">
+                  <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55;">{{ s.label }}</div>
+                  <div style="font-family: var(--font-heading); font-weight: 800; font-size: 34px; line-height: 1.05; margin-top: 6px; color: {{ s.color }}">{{ s.value }}</div>
+                  <div style="font-size: 12px; opacity: 0.6;">{{ s.note }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr;">
+              <div style="padding: 22px 24px; border-right: 2px solid var(--color-divider);">
+                <h4 style="font-size: 15px; margin: 0 0 14px; letter-spacing: 0.06em; text-transform: uppercase;">Most blocked domains</h4>
+                <sc-for list="{{ blocked }}" as="b" hint-placeholder-count="6">
+                  <div style="border-top: 1px solid var(--color-neutral-300); padding: 10px 0; display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
+                    <span style="font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;">{{ b.domain }}</span>
+                    <span style="opacity: 0.6; font-variant-numeric: tabular-nums; flex: none;">{{ b.hits }}</span>
+                  </div>
+                </sc-for>
+
+                <h4 style="font-size: 15px; margin: 26px 0 14px; letter-spacing: 0.06em; text-transform: uppercase;">DHCP leases expiring</h4>
+                <sc-for list="{{ leases }}" as="l" hint-placeholder-count="4">
+                  <div style="border-top: 1px solid var(--color-neutral-300); padding: 10px 0; display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
+                    <span>{{ l.name }} <span style="opacity: 0.5; font-variant-numeric: tabular-nums;">{{ l.ip }}</span></span>
+                    <span style="opacity: 0.6; font-variant-numeric: tabular-nums; flex: none;">{{ l.expires }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="padding: 22px 24px;">
+                <div style="display: flex; align-items: baseline; justify-content: space-between;">
+                  <h4 style="font-size: 15px; margin: 0; letter-spacing: 0.06em; text-transform: uppercase;">SSH session</h4>
+                  <span style="font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums;">{{ sshTarget }}</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0;">
+                  <sc-for list="{{ sshCommands }}" as="c" hint-placeholder-count="6">
+                    <button onClick="{{ c.onClick }}" class="btn btn-secondary" style="justify-content: flex-start; font-size: 12px; padding: 5px 10px;">{{ c.label }}</button>
+                  </sc-for>
+                </div>
+                <div style="border: 2px solid var(--color-divider); background: #201e1d; color: #d7d3d3; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.75; padding: 14px 16px; height: 340px; overflow-y: auto;">
+                  <sc-for list="{{ sshLog }}" as="l" hint-placeholder-count="8">
+                    <div style="color: {{ l.color }}; white-space: pre-wrap;">{{ l.text }}</div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isScan }}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 24px;">
+            <div style="border: 2px solid var(--color-divider); padding: 20px 22px;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <div style="font-family: var(--font-heading); font-weight: 800; font-size: 18px;">{{ scanHeadline }}</div>
+                <div style="font-size: 12px; opacity: 0.6; font-variant-numeric: tabular-nums;">192.168.0.1 – 192.168.0.254</div>
+              </div>
+              <div style="height: 10px; background: var(--color-neutral-300); margin: 14px 0 8px; overflow: hidden;">
+                <div style="height: 10px; background: var(--color-accent); width: {{ scanWidth }};"></div>
+              </div>
+              <div style="display: flex; gap: 28px; font-size: 12px; opacity: 0.7; font-variant-numeric: tabular-nums;">
+                <span>{{ scanProbed }} hosts probed</span>
+                <span>{{ scanFound }} responded</span>
+                <span>leases cross-checked against Pi-hole</span>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px; border: 2px solid var(--color-divider); background: #201e1d; color: #d7d3d3; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.7; padding: 16px 18px; height: 420px; overflow-y: auto;">
+              <sc-for list="{{ scanLog }}" as="l" hint-placeholder-count="8">
+                <div style="display: flex; gap: 14px;">
+                  <span style="opacity: 0.45; flex: none;">{{ l.t }}</span>
+                  <span style="color: {{ l.color }}">{{ l.text }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 24px; max-width: 760px;">
+            <sc-for list="{{ settingsRows }}" as="s" hint-placeholder-count="6">
+              <div style="display: grid; grid-template-columns: 1fr 220px; gap: 24px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--color-neutral-300);">
+                <div>
+                  <div style="font-family: var(--font-heading); font-weight: 600; font-size: 14px;">{{ s.label }}</div>
+                  <div style="font-size: 12px; opacity: 0.6; margin-top: 2px;">{{ s.note }}</div>
+                </div>
+                <div style="font-size: 13px; font-variant-numeric: tabular-nums; opacity: 0.8;">{{ s.value }}</div>
+              </div>
+            </sc-for>
+            <div style="margin-top: 24px; display: flex; gap: 10px;">
+              <button class="btn btn-primary" style="justify-content: flex-start;">Save preferences</button>
+              <button class="btn btn-secondary" style="justify-content: flex-start;">Export inventory CSV</button>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+
+    <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ false }}">
+      <div style="width: 392px; flex: none; border-left: 2px solid var(--color-divider); background: var(--color-neutral-100); display: flex; flex-direction: column;">
+        <div style="padding: 20px 22px 16px; border-bottom: 2px solid var(--color-divider);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+            <div>
+              <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55;">{{ sel.vendor }}</div>
+              <h3 style="font-size: 22px; margin: 4px 0 0;">{{ sel.name }}</h3>
+            </div>
+            <button onClick="{{ clearSelection }}" class="btn btn-secondary" style="padding: 4px 10px;">Close</button>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+            <span style="font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid {{ sel.riskColor }}; color: {{ sel.riskColor }}; padding: 2px 7px;">{{ sel.riskLabel }}</span>
+            <span style="font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid var(--color-divider); padding: 2px 7px; opacity: 0.75;">{{ sel.statusLabel }}</span>
+            <span style="font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid var(--color-divider); padding: 2px 7px; opacity: 0.75;">{{ sel.control }}</span>
+          </div>
+        </div>
+
+        <div style="flex: 1; overflow-y: auto;">
+          <sc-if value="{{ sel.estimated }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 12px 22px; background: var(--color-accent-100); border-bottom: 1px solid var(--color-neutral-300); font-size: 12px; text-wrap: pretty;">No management API on this device. Values below marked <em>est.</em> are inferred from ARP timing, lease history and the vendor's release feed — treat them as indicative.</div>
+          </sc-if>
+
+          <sc-for list="{{ sel.facts }}" as="f" hint-placeholder-count="9">
+            <div style="display: flex; justify-content: space-between; gap: 16px; padding: 9px 22px; border-bottom: 1px solid var(--color-neutral-300); font-size: 13px;">
+              <span style="opacity: 0.6;">{{ f.k }}</span>
+              <span style="font-variant-numeric: tabular-nums; text-align: right;">{{ f.v }}</span>
+            </div>
+          </sc-for>
+
+          <sc-if value="{{ sel.isTpLink }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 18px 22px; border-bottom: 2px solid var(--color-divider);">
+              <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55; margin-bottom: 10px;">TP-Link controls</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <sc-for list="{{ sel.tpActions }}" as="a" hint-placeholder-count="9">
+                  <button onClick="{{ a.onClick }}" class="btn btn-secondary" style="justify-content: flex-start; width: 100%; font-size: 12px;">{{ a.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ sel.isPi }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 18px 22px; border-bottom: 2px solid var(--color-divider);">
+              <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55; margin-bottom: 10px;">SSH · {{ sshTarget }}</div>
+              <div style="display: grid; gap: 8px;">
+                <sc-for list="{{ sel.piActions }}" as="a" hint-placeholder-count="5">
+                  <button onClick="{{ a.onClick }}" class="btn btn-secondary" style="justify-content: flex-start; width: 100%; font-size: 12px;">{{ a.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="padding: 18px 22px;">
+            <div style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55; margin-bottom: 10px;">General</div>
+            <div style="display: grid; gap: 8px;">
+              <sc-for list="{{ sel.genActions }}" as="a" hint-placeholder-count="4">
+                <button onClick="{{ a.onClick }}" class="btn btn-secondary" style="justify-content: flex-start; width: 100%; font-size: 12px;">{{ a.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding: 16px 22px; border-top: 2px solid var(--color-divider);">
+          <button onClick="{{ sel.onPrimary }}" class="btn btn-primary btn-block" style="justify-content: flex-start; width: 100%;">{{ sel.primaryLabel }}</button>
+          <div style="font-size: 11px; opacity: 0.55; margin-top: 8px; text-wrap: pretty;">{{ sel.primaryNote }}</div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <div style="flex: none; height: 30px; border-top: 2px solid var(--color-divider); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 11px; letter-spacing: 0.04em; background: var(--color-neutral-100);">
+    <span style="opacity: 0.7;">{{ statusLine }}</span>
+    <span style="opacity: 0.5;">{{ buildLine }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1480,&quot;height&quot;:960},&quot;platform&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Windows&quot;,&quot;macOS&quot;],&quot;default&quot;:&quot;Windows&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;deviceDensity&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Compact&quot;,&quot;Comfortable&quot;],&quot;default&quot;:&quot;Comfortable&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showOfflineDevices&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = {
+    view: 'overview',
+    selectedId: null,
+    filter: 'All',
+    query: '',
+    scanning: false,
+    progress: 0,
+    log: [],
+    ssh: [
+      { text: 'ssh admin@192.168.0.2 -p 2222', color: '#ff9783' },
+      { text: 'Linux pihole 6.6.51+rpt-rpi-2712 aarch64', color: '#9b9797' },
+      { text: 'Last login: today 09:14:02 from 192.168.0.60', color: '#9b9797' },
+      { text: 'admin@pihole:~ $ ', color: '#d7d3d3' }
+    ],
+    toast: ''
+  };
+
+  devices = [
+    { id: 'r1', name: 'Archer BE220', vendor: 'TP-Link', type: 'Gateway router', ip: '192.168.0.1', mac: '9C:53:22:1A:0B:44', status: 'online', parent: null, link: 'WAN · fibre', signal: '—', fw: '1.1.2', fwLatest: '1.2.0', fwSource: 'vendor feed', risk: 'warn', control: 'Full control', tp: true, up: '23 d', traffic: 0, clients: 6 },
+    { id: 'pi', name: 'Raspberry Pi 5', vendor: 'Raspberry Pi Ltd', type: 'DNS / DHCP · Pi-hole', ip: '192.168.0.2', mac: 'D8:3A:DD:41:9C:07', status: 'online', parent: 'r1', link: 'Ethernet 1 Gb', signal: '—', fw: 'Pi-hole 6.0.6', fwLatest: 'Pi-hole 6.1.1', fwSource: 'apt', risk: 'warn', control: 'SSH :2222', tp: false, pi: true, up: '61 d', traffic: 1.4, clients: 0 },
+    { id: 'sw', name: '8-port switch', vendor: 'Unbranded', type: 'Unmanaged switch', ip: 'no address', mac: '—', status: 'online', parent: 'r1', link: 'Ethernet 1 Gb', signal: '—', fw: 'n/a', fwLatest: 'n/a', fwSource: 'no API', risk: 'info', control: 'View only', tp: false, est: true, up: '~ 180 d est.', traffic: 0, clients: 4 },
+    { id: 'ax20', name: 'Archer AX20', vendor: 'TP-Link', type: 'Router in AP mode', ip: '192.168.0.3', mac: '48:22:54:71:0C:19', status: 'online', parent: 'sw', link: 'Ethernet 1 Gb', signal: '—', fw: '1.2.1', fwLatest: '1.3.6', fwSource: 'vendor feed', risk: 'warn', control: 'Full control', tp: true, up: '23 d', traffic: 0, clients: 5 },
+    { id: 're450', name: 'RE450 extender', vendor: 'TP-Link', type: 'Range extender', ip: '192.168.0.4', mac: '5C:62:8B:04:A1:20', status: 'online', parent: 'r1', link: 'Wi-Fi 5 GHz backhaul', signal: '-58 dBm', fw: '1.0.19', fwLatest: '1.0.21', fwSource: 'vendor feed', risk: 'warn', control: 'Full control', tp: true, up: '11 d', traffic: 0, clients: 3 },
+    { id: 'wa1201', name: 'TL-WA1201', vendor: 'TP-Link', type: 'Range extender', ip: '192.168.0.5', mac: '3C:84:6A:12:8D:55', status: 'online', parent: 'r1', link: 'Wi-Fi 5 GHz backhaul', signal: '-66 dBm', fw: '1.0.5', fwLatest: '1.0.5', fwSource: 'vendor feed', risk: 'ok', control: 'Full control', tp: true, up: '11 d', traffic: 0, clients: 2 },
+    { id: 'wdr', name: 'TL-WDR4300', vendor: 'TP-Link', type: 'Legacy router', ip: '192.168.0.6', mac: 'F8:D1:11:20:3E:88', status: 'online', parent: 'sw', link: 'Ethernet 100 Mb', signal: '—', fw: '3.14.3', fwLatest: 'end of support', fwSource: 'EOL 2016', risk: 'critical', control: 'Legacy web UI', tp: true, legacy: true, up: '340 d', traffic: 0.1, clients: 1 },
+    { id: 'bcm', name: 'Broadcom AP', vendor: 'Broadcom', type: 'Access point', ip: '192.168.0.7', mac: '00:10:18:44:B2:6F', status: 'online', parent: 'sw', link: 'Ethernet 1 Gb', signal: '—', fw: 'unknown', fwLatest: 'unknown', fwSource: 'no API', risk: 'warn', control: 'View only', tp: false, est: true, up: '~ 90 d est.', traffic: 0.2, clients: 2 },
+    { id: 'desk', name: 'Desktop — Study', vendor: 'ASUSTek', type: 'Desktop PC', ip: '192.168.0.20', mac: '04:D9:F5:6C:11:A3', status: 'online', parent: 'sw', link: 'Ethernet 1 Gb', signal: '—', fw: 'Windows 11 24H2', fwLatest: 'Windows 11 24H2', fwSource: 'agent', risk: 'ok', control: 'Basic', tp: false, up: '3 d', traffic: 12.2, clients: 0 },
+    { id: 'mbp', name: 'MacBook Pro', vendor: 'Apple', type: 'Laptop', ip: '192.168.0.21', mac: 'F0:18:98:2B:6D:A4', status: 'online', parent: 'r1', link: 'Wi-Fi 6 GHz', signal: '-44 dBm', fw: 'macOS 15.4', fwLatest: 'macOS 15.4', fwSource: 'agent', risk: 'ok', control: 'Basic', tp: false, up: '—', traffic: 9.7, clients: 0 },
+    { id: 'lap1', name: 'Laptop — Dell XPS', vendor: 'Dell', type: 'Laptop', ip: '192.168.0.22', mac: '8C:16:45:9D:02:B7', status: 'online', parent: 'ax20', link: 'Wi-Fi 5 GHz', signal: '-55 dBm', fw: 'Windows 11 23H2', fwLatest: 'Windows 11 24H2', fwSource: 'agent', risk: 'warn', control: 'Basic', tp: false, up: '—', traffic: 3.4, clients: 0 },
+    { id: 'lap2', name: 'Laptop — ThinkPad', vendor: 'Lenovo', type: 'Laptop', ip: '192.168.0.23', mac: '54:E1:AD:7B:33:90', status: 'offline', parent: 'ax20', link: '—', signal: '—', fw: 'Ubuntu 24.04', fwLatest: 'Ubuntu 24.04', fwSource: 'agent', risk: 'ok', control: 'Basic', tp: false, up: '—', traffic: 0, clients: 0 },
+    { id: 'ps4', name: 'PlayStation 4 Pro', vendor: 'Sony Interactive', type: 'Games console', ip: '192.168.0.30', mac: '2C:CC:44:71:9F:03', status: 'online', parent: 'sw', link: 'Ethernet 1 Gb', signal: '—', fw: '11.52', fwLatest: '11.52', fwSource: 'vendor feed', risk: 'ok', control: 'Basic', tp: false, up: '2 h', traffic: 18.4, clients: 0 },
+    { id: 'tv', name: 'Bravia XR-55', vendor: 'Sony', type: 'Television', ip: '192.168.0.31', mac: 'FC:F1:52:0B:77:41', status: 'online', parent: 're450', link: 'Wi-Fi 5 GHz', signal: '-61 dBm', fw: 'Android TV 10', fwLatest: 'Android TV 12', fwSource: 'vendor feed', risk: 'warn', control: 'Basic', tp: false, up: '6 h', traffic: 7.8, clients: 0 },
+    { id: 'gree', name: 'GREE air conditioner', vendor: 'GREE Electric', type: 'Air conditioner', ip: '192.168.0.32', mac: 'C4:36:6C:80:44:19', status: 'online', parent: 'wa1201', link: 'Wi-Fi 2.4 GHz', signal: '-72 dBm', fw: 'unknown', fwLatest: 'unknown', fwSource: 'no API', risk: 'critical', control: 'View only', tp: false, est: true, up: '~ 40 d est.', traffic: 0.02, clients: 0 },
+    { id: 'nord', name: 'OnePlus Nord 4', vendor: 'OnePlus', type: 'Phone', ip: '192.168.0.40', mac: 'Private address', status: 'online', parent: 'r1', link: 'Wi-Fi 6 GHz', signal: '-47 dBm', fw: 'OxygenOS 15', fwLatest: 'OxygenOS 15', fwSource: 'agent', risk: 'ok', control: 'Basic', tp: false, up: '—', traffic: 2.6, clients: 0 },
+    { id: 'unk', name: 'Unidentified host', vendor: 'MAC vendor unknown', type: 'Unknown', ip: '192.168.0.77', mac: '7A:11:E4:C0:92:38', status: 'online', parent: 'bcm', link: 'Wi-Fi 2.4 GHz', signal: '-70 dBm', fw: '—', fwLatest: '—', fwSource: 'no lease name', risk: 'critical', control: 'View only', tp: false, up: '18 m', traffic: 0.4, clients: 0 }
+  ];
+
+  auditFindings = [
+    { id: 'f1', deviceId: 'wdr', severity: 'Critical', title: 'TL-WDR4300 is nine years past end of support', detail: 'Final TP-Link firmware shipped in 2016 and carries a known remote command-injection flaw in the httpd binary. It is bridging one client and can be retired or reflashed to OpenWrt.', cve: 'CVE-2016-10177', action: 'Retire this device' },
+    { id: 'f2', deviceId: 'unk', severity: 'Critical', title: 'Unrecognised host behind the Broadcom AP', detail: 'Joined 18 minutes ago. No DHCP hostname from Pi-hole, randomised MAC with no vendor prefix match, and outbound DNS to a domain not in your query history.', cve: 'Unclassified', action: 'Block internet access' },
+    { id: 'f3', deviceId: 'gree', severity: 'Critical', title: 'GREE controller runs an unauthenticated local API', detail: 'The unit answers UDP 7000 with device state and accepts commands without a key. There is no firmware feed for this model, so age cannot be verified — treat as permanently unpatched.', cve: 'Local exposure', action: 'Block internet access' },
+    { id: 'f4', deviceId: 'r1', severity: 'High', title: 'Gateway firmware one release behind', detail: 'Archer BE220 is on 1.1.2. Release 1.2.0 fixes an authenticated stack overflow in the cloud pairing service and improves 6 GHz channel selection.', cve: 'CVE-2025-4471', action: 'Update firmware' },
+    { id: 'f5', deviceId: 'pi', severity: 'High', title: 'Pi-hole is your single point of DNS failure', detail: 'Every lookup on the network resolves through 192.168.0.2, and no secondary DNS is advertised. If the Pi reboots mid-update, the whole network loses name resolution.', cve: 'Availability', action: 'Set fallback DNS' },
+    { id: 'f6', deviceId: 'ax20', severity: 'High', title: 'AX20 running firmware from 2023', detail: 'Version 1.3.6 addresses a WPA3 downgrade issue. The AX20 is in AP mode serving five clients including both laptops.', cve: 'CVE-2024-5035', action: 'Update firmware' },
+    { id: 'f7', deviceId: 'bcm', severity: 'Medium', title: 'Broadcom AP reports no firmware version', detail: 'No SNMP, no HTTP banner, no vendor feed match. Age estimated at 90+ days on the network. Two clients attached, one of them the unidentified host.', cve: 'Unverifiable', action: 'Add manual note' },
+    { id: 'f8', deviceId: 'tv', severity: 'Medium', title: 'Bravia two Android TV versions behind', detail: 'Android TV 10 no longer receives Google security patches on this panel. It reaches the internet through the RE450.', cve: 'EOL branch', action: 'Update firmware' },
+    { id: 'f9', deviceId: 're450', severity: 'Low', title: 'RE450 backhaul at -58 dBm', detail: 'Usable but not strong. The Bravia behind it loses roughly 40% of the gateway throughput. Moving the extender one room closer would recover most of it.', cve: 'Performance', action: 'Show placement tip' }
+  ];
+
+  sevColor(s) {
+    if (s === 'Critical') return 'var(--color-accent)';
+    if (s === 'High') return 'var(--color-accent-700)';
+    if (s === 'Medium') return 'var(--color-neutral-700)';
+    return 'var(--color-neutral-500)';
+  }
+
+  riskMeta(r) {
+    if (r === 'critical') return { label: 'Critical', color: 'var(--color-accent)' };
+    if (r === 'warn') return { label: 'Update due', color: 'var(--color-accent-700)' };
+    if (r === 'info') return { label: 'No API', color: 'var(--color-neutral-500)' };
+    return { label: 'OK', color: 'var(--color-neutral-600)' };
+  }
+
+  go = (view) => this.setState({ view });
+  select = (id) => this.setState({ selectedId: id });
+
+  toast = (msg) => {
+    this.setState({ toast: msg });
+    clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => this.setState({ toast: '' }), 3600);
+  };
+
+  runSsh = (cmd, output) => {
+    this.setState(s => ({
+      view: 'pihole',
+      ssh: s.ssh.slice(0, -1)
+        .concat([{ text: 'admin@pihole:~ $ ' + cmd, color: '#ff9783' }])
+        .concat(output.map(o => ({ text: o, color: '#9b9797' })))
+        .concat([{ text: 'admin@pihole:~ $ ', color: '#d7d3d3' }])
+    }));
+  };
+
+  startScan = () => {
+    if (this.state.scanning) return;
+    this.setState({ view: 'scan', scanning: true, progress: 0, log: [] });
+    const lines = [
+      ['ARP sweep 192.168.0.0/24 — 254 addresses queued', '#d7d3d3'],
+      ['DHCP lease table pulled from Pi-hole (192.168.0.2:2222)', '#d7d3d3'],
+      ['192.168.0.1  9C:53:22:1A:0B:44  TP-Link — Archer BE220', '#d7d3d3'],
+      ['192.168.0.2  D8:3A:DD:41:9C:07  Raspberry Pi — DNS + DHCP', '#d7d3d3'],
+      ['192.168.0.3  48:22:54:71:0C:19  TP-Link — AX20 (AP mode)', '#d7d3d3'],
+      ['LLDP silent on 192.168.0.x — switch is unmanaged, topology inferred', '#ff9783'],
+      ['192.168.0.6  F8:D1:11:20:3E:88  TP-Link — WDR4300, EOL 2016', '#ff563c'],
+      ['UDP 7000 open on 192.168.0.32 — GREE, no authentication', '#ff563c'],
+      ['192.168.0.7  00:10:18:44:B2:6F  Broadcom — no version banner', '#ff9783'],
+      ['192.168.0.77 7A:11:E4:C0:92:38  vendor unknown, no lease name', '#ff563c'],
+      ['  ↳ resolving via Pi-hole log: 1 outbound domain, unclassified', '#ff563c'],
+      ['Firmware catalogue matched against 17 hosts', '#d7d3d3'],
+      ['7 devices behind current release, 3 critical, 3 unverifiable', '#ff563c'],
+      ['Sweep complete in 12.1 s — 16 of 17 responded', '#d7d3d3']
+    ];
+    let i = 0;
+    clearInterval(this._t);
+    this._t = setInterval(() => {
+      i++;
+      const p = Math.min(100, Math.round((i / lines.length) * 100));
+      const l = lines[i - 1];
+      const now = new Date();
+      const t = String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+      this.setState(s => ({ progress: p, log: l ? s.log.concat([{ t, text: l[0], color: l[1] }]) : s.log }));
+      if (i >= lines.length) { clearInterval(this._t); this.setState({ scanning: false }); }
+    }, 380);
+  };
+
+  componentWillUnmount() { clearInterval(this._t); clearTimeout(this._toastT); }
+
+  renderVals() {
+    const st = this.state;
+    const q = st.query.trim().toLowerCase();
+    const all = this.devices;
+    const byId = {};
+    all.forEach(d => { byId[d.id] = d; });
+
+    const online = all.filter(d => d.status === 'online');
+    const stale = all.filter(d => d.risk === 'warn' || d.risk === 'critical');
+    const crit = all.filter(d => d.risk === 'critical');
+
+    let rowsSrc = all;
+    if (st.filter === 'TP-Link') rowsSrc = all.filter(d => d.tp);
+    else if (st.filter === 'Infrastructure') rowsSrc = all.filter(d => d.clients > 0 || d.pi);
+    else if (st.filter === 'Needs update') rowsSrc = all.filter(d => d.risk === 'warn' || d.risk === 'critical');
+    else if (st.filter === 'No API') rowsSrc = all.filter(d => d.est);
+    else if (st.filter === 'Clients') rowsSrc = all.filter(d => !d.clients && !d.pi);
+    if (q) rowsSrc = rowsSrc.filter(d => (d.name + d.vendor + d.ip + d.mac + d.type).toLowerCase().includes(q));
+
+    const rows = rowsSrc.map(d => {
+      const rm = this.riskMeta(d.risk);
+      return {
+        ...d,
+        dot: d.status === 'online' ? (d.risk === 'critical' ? 'var(--color-accent)' : 'var(--color-text)') : 'var(--color-neutral-400)',
+        riskLabel: rm.label,
+        riskColor: rm.color,
+        controlColor: d.est ? 'var(--color-accent-700)' : 'var(--color-neutral-600)',
+        parentName: d.parent ? byId[d.parent].name : 'Internet',
+        fwLabel: (d.fw === d.fwLatest || d.fwLatest === 'n/a' || d.fwLatest === 'unknown') ? d.fw : d.fw + ' → ' + d.fwLatest,
+        rowBg: st.selectedId === d.id ? 'var(--color-accent-100)' : 'transparent',
+        onClick: () => this.select(d.id)
+      };
+    });
+
+    const treeRows = [];
+    const walk = (parentId, depth) => {
+      all.filter(d => d.parent === parentId).forEach(d => {
+        const rm = this.riskMeta(d.risk);
+        treeRows.push({
+          name: d.name,
+          sub: d.type + ' · ' + d.ip,
+          right: d.link,
+          badge: rm.label,
+          badgeColor: rm.color,
+          indent: (12 + depth * 30) + 'px',
+          weight: d.clients > 0 || d.pi ? 800 : 500,
+          dot: d.status === 'offline' ? 'transparent' : (d.risk === 'critical' ? 'var(--color-accent)' : 'var(--color-text)'),
+          ring: d.status === 'offline' ? '2px solid var(--color-neutral-400)' : '0',
+          bg: st.selectedId === d.id ? 'var(--color-accent-100)' : 'transparent',
+          onClick: () => this.select(d.id)
+        });
+        walk(d.id, depth + 1);
+      });
+    };
+    const root = all[0];
+    treeRows.push({
+      name: root.name, sub: 'Gateway · ' + root.ip, right: 'WAN 940 / 110 Mbps',
+      badge: 'Update due', badgeColor: 'var(--color-accent-700)', indent: '12px', weight: 800,
+      dot: 'var(--color-text)', ring: '0',
+      bg: st.selectedId === root.id ? 'var(--color-accent-100)' : 'transparent',
+      onClick: () => this.select(root.id)
+    });
+    walk('r1', 1);
+
+    const sel = all.find(d => d.id === st.selectedId);
+    let selVals = null;
+    if (sel) {
+      const rm = this.riskMeta(sel.risk);
+      const behind = sel.fw !== sel.fwLatest && sel.fwLatest !== 'n/a' && sel.fwLatest !== 'unknown';
+      const est = !!sel.est;
+      selVals = {
+        name: sel.name,
+        vendor: sel.vendor,
+        control: sel.control,
+        estimated: est,
+        isTpLink: !!sel.tp && !sel.legacy,
+        isPi: !!sel.pi,
+        riskLabel: rm.label,
+        riskColor: rm.color,
+        statusLabel: sel.status === 'online' ? 'Online' : 'Not seen',
+        facts: [
+          { k: 'Type', v: sel.type },
+          { k: 'IPv4', v: sel.ip },
+          { k: 'MAC', v: sel.mac },
+          { k: 'Uplink', v: sel.parent ? byId[sel.parent].name : 'Internet' },
+          { k: 'Connection', v: sel.link },
+          { k: 'Signal', v: sel.signal },
+          { k: 'Firmware', v: sel.fw },
+          { k: 'Latest available', v: sel.fwLatest },
+          { k: 'Source', v: sel.fwSource },
+          { k: 'Uptime', v: sel.up },
+          { k: 'Attached clients', v: sel.clients ? String(sel.clients) : '—' },
+          { k: 'Traffic, 1 h', v: sel.traffic ? sel.traffic + ' GB' : '—' }
+        ],
+        tpActions: [
+          { label: 'Reboot', onClick: () => this.toast('Reboot queued — ' + sel.name) },
+          { label: 'Firmware update', onClick: () => this.toast('Staging ' + sel.fwLatest + ' for ' + sel.name) },
+          { label: 'SSID + password', onClick: () => this.toast('Per-band SSID editor — 2.4 / 5 / 6 GHz') },
+          { label: 'Band steering', onClick: () => this.toast('Band steering and channel plan') },
+          { label: 'Client list', onClick: () => this.toast(sel.clients + ' clients attached to ' + sel.name) },
+          { label: 'Port forwarding', onClick: () => this.toast('Forwarding rules — 3 active') },
+          { label: 'WAN speed test', onClick: () => this.toast('Speed test running against the gateway') },
+          { label: 'LED schedule', onClick: () => this.toast('LED off 23:00 – 07:00') },
+          { label: 'Backhaul health', onClick: () => this.toast('Backhaul ' + sel.signal + ' — link stable') }
+        ],
+        piActions: [
+          { label: 'Open interactive shell', onClick: () => this.runSsh('uptime', [' 09:41:12 up 61 days,  4:22,  1 user,  load average: 0.14, 0.09, 0.08']) },
+          { label: 'pihole status', onClick: () => this.runSsh('pihole status', ['  [✓] FTL is listening on port 53', '  [✓] Blocking is enabled', '  [i] 148,392 domains on the blocklist']) },
+          { label: 'Update gravity', onClick: () => this.runSsh('pihole -g', ['  [i] Neutrino emissions detected...', '  [✓] Pulled 6 blocklists', '  [✓] Gravity rebuilt — 148,392 domains']) },
+          { label: 'Restart FTL', onClick: () => this.runSsh('sudo systemctl restart pihole-FTL', ['  pihole-FTL restarted — DNS resumed in 1.2 s']) },
+          { label: 'Disk and temperature', onClick: () => this.runSsh('df -h / && vcgencmd measure_temp', ['  /dev/mmcblk0p2   59G   11G   45G  20% /', "  temp=48.3'C"]) },
+          { label: 'Reboot the Pi', onClick: () => this.toast('Reboot needs confirmation — DNS drops for ~40 s') }
+        ],
+        genActions: [
+          { label: 'Open web admin page', onClick: () => this.toast('Launching http://' + sel.ip) },
+          { label: 'Block internet access', onClick: () => this.toast(sel.name + ' blocked via Pi-hole and the gateway') },
+          { label: 'Rename and add a note', onClick: () => this.toast('Manual annotation for ' + sel.name) },
+          { label: 'Alert when it joins or leaves', onClick: () => this.toast('Watching ' + sel.name) }
+        ],
+        primaryLabel: behind ? 'Update firmware to ' + sel.fwLatest : (est ? 'Record firmware manually' : 'Re-probe this device'),
+        primaryNote: behind
+          ? 'Fetches from the vendor catalogue and applies on your confirmation.'
+          : (est ? 'No API to query. Store the version you read off the device so age warnings still work.' : 'Current as of the last catalogue sync.'),
+        onPrimary: () => this.toast(behind ? 'Update staged for ' + sel.name : 'Noted — ' + sel.name)
+      };
+    }
+
+    const findings = this.auditFindings.map(f => {
+      const d = byId[f.deviceId] || {};
+      return {
+        ...f,
+        color: this.sevColor(f.severity),
+        device: d.name || '—',
+        ip: d.ip || '—',
+        onFix: () => this.toast(f.action + ' — ' + (d.name || '')),
+        onOpen: () => this.setState({ view: 'devices', selectedId: f.deviceId })
+      };
+    });
+
+    const navDefs = [
+      ['overview', 'Overview', ''],
+      ['devices', 'Inventory', String(all.length)],
+      ['map', 'Topology', ''],
+      ['security', 'Security audit', String(crit.length)],
+      ['pihole', 'Pi-hole · SSH', ''],
+      ['scan', 'Discovery', st.scanning ? '···' : ''],
+      ['settings', 'Preferences', '']
+    ];
+
+    const titles = {
+      overview: ['Home network', 'Everything on the wire'],
+      devices: ['Inventory', rowsSrc.length + ' of ' + all.length + ' devices'],
+      map: ['Topology', 'Archer BE220 and what hangs off it'],
+      security: ['Audit', 'Firmware age and exposure'],
+      pihole: ['Raspberry Pi 5', 'DNS, DHCP and shell'],
+      scan: ['Discovery', 'Subnet sweep'],
+      settings: ['Preferences', 'Scanning, credentials and alerts']
+    };
+    const tt = titles[st.view] || titles.overview;
+
+    return {
+      onlineCount: online.length,
+      offlineCount: all.length - online.length,
+      viewKicker: tt[0],
+      viewTitle: tt[1],
+      query: st.query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      startScan: this.startScan,
+      scanButtonLabel: st.scanning ? 'Scanning…' : 'Scan network now',
+      goSecurity: () => this.go('security'),
+      clearSelection: () => this.select(null),
+      hasSelection: !!sel,
+      sel: selVals,
+      isOverview: st.view === 'overview',
+      isDevices: st.view === 'devices',
+      isMap: st.view === 'map',
+      isSecurity: st.view === 'security',
+      isPihole: st.view === 'pihole',
+      isScan: st.view === 'scan',
+      isSettings: st.view === 'settings',
+      navItems: navDefs.map(([k, label, badge]) => ({
+        label, badge,
+        badgeColor: k === 'security' && crit.length ? 'var(--color-accent)' : 'var(--color-neutral-600)',
+        mark: st.view === k ? 'var(--color-accent)' : 'transparent',
+        bg: st.view === k ? 'var(--color-neutral-200)' : 'transparent',
+        weight: st.view === k ? 800 : 500,
+        onClick: () => this.go(k)
+      })),
+      chromeButtons: (this.props.platform === 'macOS'
+        ? [{ glyph: '●' }, { glyph: '●' }, { glyph: '●' }]
+        : [{ glyph: '—' }, { glyph: '▢' }, { glyph: '✕' }]
+      ).map(b => ({ ...b, onClick: () => {} })),
+      stats: [
+        { label: 'Devices seen', value: all.length, note: online.length + ' responding now', color: 'var(--color-text)' },
+        { label: 'Behind or unverifiable', value: stale.length, note: '3 have no firmware API', color: 'var(--color-accent-700)' },
+        { label: 'Critical findings', value: crit.length, note: 'need action today', color: 'var(--color-accent)' },
+        { label: 'DNS queries blocked', value: '31%', note: '9,412 of 30,180 today', color: 'var(--color-text)' }
+      ],
+      attention: findings.slice(0, 5).map(f => ({
+        device: f.device, issue: f.title, severity: f.severity, color: f.color,
+        onClick: () => this.setState({ view: 'devices', selectedId: f.deviceId })
+      })),
+      talkers: [
+        { name: 'PlayStation 4 Pro', amount: '18.4 GB', width: '100%' },
+        { name: 'Desktop — Study', amount: '12.2 GB', width: '66%' },
+        { name: 'MacBook Pro', amount: '9.7 GB', width: '53%' },
+        { name: 'Bravia XR-55', amount: '7.8 GB', width: '42%' },
+        { name: 'Laptop — Dell XPS', amount: '3.4 GB', width: '18%' }
+      ],
+      nodeLoad: [
+        { name: 'Archer BE220', clients: '6 clients' },
+        { name: 'Archer AX20', clients: '5 clients' },
+        { name: '8-port switch', clients: '4 wired' },
+        { name: 'RE450', clients: '3 clients' },
+        { name: 'TL-WA1201', clients: '2 clients' },
+        { name: 'Broadcom AP', clients: '2 clients · est.' }
+      ],
+      filters: ['All', 'TP-Link', 'Infrastructure', 'Needs update', 'No API', 'Clients'].map(f => ({
+        label: f,
+        bg: st.filter === f ? 'var(--color-text)' : 'transparent',
+        fg: st.filter === f ? 'var(--color-bg)' : 'var(--color-text)',
+        onClick: () => this.setState({ filter: f })
+      })),
+      rows,
+      treeRows,
+      auditCounts: [
+        { n: 3, label: 'Critical', note: 'Act today', color: 'var(--color-accent)' },
+        { n: 3, label: 'High', note: 'This week', color: 'var(--color-accent-700)' },
+        { n: 3, label: 'Medium & low', note: 'When convenient', color: 'var(--color-neutral-700)' }
+      ],
+      findings,
+      piStats: [
+        { label: 'Queries today', value: '30,180', note: 'all clients', color: 'var(--color-text)' },
+        { label: 'Blocked', value: '31%', note: '9,412 queries', color: 'var(--color-accent)' },
+        { label: 'Blocklist', value: '148k', note: 'domains, 6 lists', color: 'var(--color-text)' },
+        { label: 'FTL uptime', value: '61 d', note: 'CPU 48.3 °C', color: 'var(--color-text)' }
+      ],
+      blocked: [
+        { domain: 'graph.facebook.com', hits: '1,204' },
+        { domain: 'app-measurement.com', hits: '988' },
+        { domain: 'ads.tiktok.com', hits: '742' },
+        { domain: 'device-metrics-us.amazon.com', hits: '611' },
+        { domain: 'gree-cloud-cn.iot.aliyun.com', hits: '498' },
+        { domain: 'analytics.sony.tv', hits: '377' }
+      ],
+      leases: [
+        { name: 'OnePlus Nord 4', ip: '192.168.0.40', expires: '18 h' },
+        { name: 'Bravia XR-55', ip: '192.168.0.31', expires: '11 h' },
+        { name: 'Unidentified host', ip: '192.168.0.77', expires: '23 h' },
+        { name: 'Laptop — Dell XPS', ip: '192.168.0.22', expires: '6 h' }
+      ],
+      sshTarget: 'admin@192.168.0.2 : 2222',
+      sshCommands: [
+        { label: 'pihole status', onClick: () => this.runSsh('pihole status', ['  [✓] FTL is listening on port 53', '  [✓] Blocking is enabled', '  [i] 148,392 domains on the blocklist']) },
+        { label: 'pihole -g', onClick: () => this.runSsh('pihole -g', ['  [i] Neutrino emissions detected...', '  [✓] Pulled 6 blocklists', '  [✓] Gravity rebuilt — 148,392 domains']) },
+        { label: 'DHCP leases', onClick: () => this.runSsh('cat /etc/pihole/dhcp.leases | wc -l', ['  17']) },
+        { label: 'top talkers', onClick: () => this.runSsh('pihole -c -e', ['  192.168.0.30  PlayStation 4 Pro   4,120 queries', '  192.168.0.20  Desktop — Study     3,884 queries', '  192.168.0.32  GREE air conditioner  2,901 queries']) },
+        { label: 'temperature', onClick: () => this.runSsh('vcgencmd measure_temp', ["  temp=48.3'C"]) },
+        { label: 'apt updates', onClick: () => this.runSsh('sudo apt list --upgradable', ['  pihole-FTL/stable 6.1.1 arm64 [upgradable from: 6.0.6]', '  1 package can be upgraded.']) }
+      ],
+      sshLog: st.ssh,
+      scanHeadline: st.scanning ? 'Sweeping the subnet' : (st.progress ? 'Sweep complete' : 'Ready to sweep'),
+      scanWidth: st.progress + '%',
+      scanProbed: Math.round(254 * st.progress / 100),
+      scanFound: st.progress >= 100 ? 16 : Math.round(16 * st.progress / 100),
+      scanLog: st.log,
+      settingsRows: [
+        { label: 'Automatic sweep interval', note: 'ARP + mDNS + SSDP, reconciled against Pi-hole leases', value: 'Every 15 minutes' },
+        { label: 'Pi-hole SSH endpoint', note: 'Key-based login used for stats and shell commands', value: '192.168.0.2:2222' },
+        { label: 'TP-Link credentials', note: 'Stored in the OS keychain, used for local device APIs', value: '5 devices linked' },
+        { label: 'Firmware catalogue sync', note: 'Vendor advisories and CVE feed', value: 'Daily, 04:00' },
+        { label: 'Notify on new device', note: 'Desktop notification when an unknown MAC takes a lease', value: 'On' },
+        { label: 'Deep port scan', note: 'Slower, checks common service ports on each host', value: 'Weekly' },
+        { label: 'Manual firmware notes', note: 'For the switch, Broadcom AP and GREE unit', value: '3 recorded' },
+        { label: 'Start with the system', note: 'Runs minimised in the tray', value: 'On' }
+      ],
+      statusLine: st.toast || (st.scanning ? 'Discovery running — ' + st.progress + '%' : 'Idle · 16 hosts responding · DNS healthy · catalogue synced 04:00'),
+      buildLine: (this.props.platform === 'macOS' ? 'macOS' : 'Windows') + ' · v0.9.0 prototype'
+    };
+  }
+}
+</script>
+</body>
+</html>

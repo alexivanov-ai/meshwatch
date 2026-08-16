@@ -143,13 +143,17 @@ async function runScan(reason) {
   try {
     const before = new Set(db.listDevices().map((d) => d.mac));
     const devices = await discovery.run({ onProgress: progress });
-    db.recordScan(devices);
+    const { newMacs } = db.recordScan(devices);
     const after = db.listDevices();
     const prefs = db.getPrefs();
-    const newcomers = after.filter((d) => !before.has(d.mac));
-    if (prefs.notifyNewDevice && before.size && newcomers.length) {
-      const names = newcomers.map((d) => d.name || d.ip).slice(0, 3).join(", ");
-      notify("New device on the network", names + (newcomers.length > 3 ? " +" + (newcomers.length - 3) : ""));
+    // before.size guards against notifying about every device on the very
+    // first-ever scan of an empty db, where "new" just means "not scanned yet".
+    if (prefs.notifyNewDevice && before.size && newMacs.length) {
+      const names = newMacs.map((mac) => {
+        const d = devices.find((x) => x.mac === mac);
+        return (d && d.name) || mac;
+      }).slice(0, 3).join(", ");
+      notify("New device on the network", names + (newMacs.length > 3 ? " +" + (newMacs.length - 3) : ""));
     }
     for (const d of after) {
       if (d.watched && !before.has(d.mac)) notify(d.name + " joined", d.ip || d.mac);
@@ -160,7 +164,7 @@ async function runScan(reason) {
         notify(d.name + " left", "Not seen on this sweep");
       }
     }
-    send("scan:finished", { count: after.length, newDevices: newcomers.length });
+    send("scan:finished", { count: after.length, newDevices: newMacs.length });
     return after;
   } finally {
     scanning = false;

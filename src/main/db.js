@@ -117,6 +117,11 @@ function recordScan(devices) {
     "DELETE FROM devices WHERE ip GLOB '*.0' OR ip GLOB '*.255' OR ip = '255.255.255.255' OR ip = '0.0.0.0'"
   ).run();
 
+  // Snapshot MACs already known before this scan's upsert, so callers can
+  // tell a genuinely-new device (never seen before) from a returning one.
+  const existingMacs = new Set(db.prepare("SELECT mac FROM devices").all().map((r) => r.mac));
+  const newMacs = devices.filter((d) => d.mac && !existingMacs.has(d.mac)).map((d) => d.mac);
+
   const now = Date.now();
   const upsert = db.prepare(
     "INSERT INTO devices (mac, ip, name, vendor, model, type, parent_mac, parent_estimated, link, signal," +
@@ -171,7 +176,7 @@ function recordScan(devices) {
   });
   tx(devices);
   notePiDiscovery(devices);
-  return devices.length;
+  return { newMacs };
 }
 
 // Per-day online ratio for the last N days, from the sightings table. Each

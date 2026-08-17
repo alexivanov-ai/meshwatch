@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<title>Meshwatch</title>
+<link rel="stylesheet" href="vendor/xterm.css">
+<link rel="stylesheet" href="styles.css">
+<script>
+  // Apply theme before first paint to avoid a light→dark flash.
+  (function () {
+    try {
+      var prefs = JSON.parse(localStorage.getItem("meshwatch.prefs") || "{}");
+      var mode = prefs.theme || "system";
+      var dark = mode === "dark" || (mode !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    } catch (e) {
+      document.documentElement.dataset.theme = "light";
+    }
+  })();
+</script>
+</head>
+<body>
+  <header>
+    <span class="mark"></span>
+    <strong>Meshwatch</strong>
+    <span class="sub" id="header-sub">Detecting network…</span>
+    <span class="header-right" id="version"></span>
+  </header>
+
+  <main>
+    <nav>
+      <div class="nav-home">
+        <div class="muted upper">Network</div>
+        <div class="nav-home-title">Home</div>
+        <div class="nav-home-counts">
+          <span id="nav-online">0 online</span>
+          <span id="nav-offline">0 off</span>
+        </div>
+      </div>
+      <button class="nav on" data-view="overview">Overview</button>
+      <button class="nav" data-view="inventory">Inventory <span class="badge" id="badge-inventory"></span></button>
+      <button class="nav" data-view="topology">Topology</button>
+      <button class="nav" data-view="audit">Security audit <span class="badge" id="badge-audit"></span></button>
+      <button class="nav" data-view="pi" id="nav-pi" hidden>Pi</button>
+      <button class="nav" data-view="discovery">Discovery <span class="badge" id="badge-discovery"></span></button>
+      <button class="nav" data-view="preferences">Preferences</button>
+      <div class="spacer"></div>
+      <button id="scan" class="primary">Scan network now</button>
+      <div class="nav-meta" id="last-scan">No scan yet</div>
+    </nav>
+
+    <section id="stage">
+      <div class="view on" id="view-overview">
+        <div class="page-head">
+          <h1>Home network</h1>
+          <p class="lede">Everything on the wire</p>
+        </div>
+        <div class="stat-row" id="overview-stats"></div>
+        <div id="overview-latency" class="muted"></div>
+        <div class="split">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Needs attention</h2>
+              <button type="button" class="ghost" data-goto="audit">Full audit</button>
+            </div>
+            <div id="overview-attention"></div>
+          </div>
+          <div>
+            <div class="panel">
+              <div class="panel-head"><h2>Top DNS clients</h2></div>
+              <div id="overview-talkers" class="empty">Connect your DNS service in Preferences to see who is querying DNS.</div>
+              <div id="overview-talker-trend"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h2>Clients per node</h2></div>
+              <div id="overview-nodes" class="empty">Run a scan.</div>
+            </div>
+            <div class="panel score-panel">
+              <div class="muted upper">Posture score</div>
+              <div class="score" id="overview-score">—</div>
+              <p class="muted" id="overview-score-note">Run a scan, then open Security audit.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view" id="view-inventory">
+        <div class="page-head row">
+          <div>
+            <h1>Inventory</h1>
+            <p class="lede" id="inventory-lede">0 devices</p>
+          </div>
+          <input type="search" id="inventory-filter" placeholder="Filter by name, IP, vendor…" autocomplete="off">
+        </div>
+        <div class="chip-row" id="inventory-chips"></div>
+        <div class="chip-row" id="inventory-tag-chips" hidden></div>
+        <table id="devices">
+          <thead>
+            <tr>
+              <th>Device</th><th>Type</th><th>Address</th>
+              <th>Connected via</th><th>Firmware</th><th>Risk</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="view" id="view-topology">
+        <div class="page-head">
+          <h1>Topology</h1>
+          <p class="lede">Who hangs off whom · gateway at the top</p>
+        </div>
+        <p class="topo-note">Read top to bottom: Internet → gateway → switches / APs → clients. Dashed links and “estimated” mean we inferred the parent — unmanaged gear reports nothing upstream.</p>
+        <div id="topology-tree" class="topo" role="tree"></div>
+      </div>
+
+      <div class="view" id="view-audit">
+        <div class="page-head row">
+          <div>
+            <h1>Audit</h1>
+            <p class="lede">Firmware age and exposure. Dismiss accepted gaps to improve the score.</p>
+          </div>
+          <button type="button" class="secondary" id="run-audit">Run audit</button>
+        </div>
+        <div class="stat-row" id="audit-stats"></div>
+        <div id="audit-trend" class="muted"></div>
+        <div id="audit-list"></div>
+      </div>
+
+      <div class="view" id="view-pi">
+        <div class="panel" id="pi-header">
+          <h2 id="pi-backend-name">Detecting DNS service…</h2>
+          <span class="muted" id="pi-host-line"></span>
+          <div class="btn-row">
+            <button type="button" id="pi-open-admin">Open admin UI</button>
+            <button type="button" id="pi-open-log" hidden>View query log</button>
+          </div>
+        </div>
+
+        <div class="stat-row" id="pi-stats"></div>
+
+        <div class="panel">
+          <h2 class="subhead">Top blocked domains</h2>
+          <div id="pi-dns-blocked" class="empty">No DNS backend detected yet.</div>
+          <h2 class="subhead">DHCP leases</h2>
+          <div id="pi-leases" class="empty">Leases appear here once a backend is connected.</div>
+        </div>
+
+        <div class="panel" id="pi-terminal-panel">
+          <h2 class="subhead">Terminal</h2>
+          <div id="pi-term"></div>
+        </div>
+
+        <div class="panel" id="pi-services-panel">
+          <div class="panel-head">
+            <h2 class="subhead" style="margin:0">Detected services</h2>
+            <button type="button" class="ghost" id="pi-services-toggle" aria-expanded="true" aria-controls="pi-services-body">Collapse</button>
+          </div>
+          <div id="pi-services-body">
+            <div id="pi-services" class="empty">Save SSH credentials for the Pi to detect running services.</div>
+            <button type="button" class="secondary" id="pi-rescan-services">Rescan services</button>
+          </div>
+        </div>
+
+        <div class="panel" id="pi-system-panel">
+          <h2 class="subhead">Pi system</h2>
+          <div id="pi-host" class="empty">CPU, disk and uptime appear here once SSH is connected.</div>
+          <div id="pi-reboot-banner" class="est" hidden>A reboot is recommended to finish a previous update.</div>
+          <div class="btn-row">
+            <button type="button" id="pi-apt-check">Check for updates</button>
+            <button type="button" id="pi-apt-upgrade" class="warn">Upgrade all</button>
+          </div>
+          <div id="pi-apt-result" class="empty"></div>
+          <h2 class="subhead">Installed apps</h2>
+          <div id="pi-apps" class="empty"></div>
+        </div>
+
+        <div class="panel">
+          <h2 class="subhead">Command runner</h2>
+          <span class="muted" id="pi-ssh-target"></span>
+          <form id="pi-form" class="cmd-form">
+            <input type="text" id="pi-cmd" placeholder="Arbitrary command…" autocomplete="off">
+            <button type="submit">Run</button>
+          </form>
+          <pre id="pi-out" class="log"></pre>
+        </div>
+      </div>
+
+      <div class="view" id="view-discovery">
+        <div class="page-head row">
+          <div>
+            <h1>Discovery</h1>
+            <p class="lede">Subnet sweep</p>
+          </div>
+          <button type="button" class="primary-inline" id="rescan">Rescan</button>
+        </div>
+        <div class="panel">
+          <div class="scan-progress-head">
+            <div>
+              <div class="muted upper" id="scan-subnet-label">Subnet</div>
+              <div class="scan-found" id="scan-found">Idle</div>
+            </div>
+            <div class="scan-bar"><div id="scan-bar-fill"></div></div>
+          </div>
+          <div class="scan-meta" id="scan-meta"></div>
+          <div id="log" class="log tall"></div>
+        </div>
+      </div>
+
+      <div class="view" id="view-preferences">
+        <div class="page-head">
+          <h1>Preferences</h1>
+          <p class="lede">Scanning, credentials and alerts</p>
+        </div>
+        <div class="prefs-list">
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Appearance</div>
+              <div class="pref-note">Light, dark, or match Windows / macOS</div>
+            </div>
+            <select id="pref-theme" aria-label="Appearance">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Show offline devices</div>
+              <div class="pref-note">Keep devices not seen in the last scan in Inventory</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-offline" checked> On</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Auto-scan on launch</div>
+              <div class="pref-note">Start a sweep when the window opens</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-autoscan"> Off</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Automatic sweep interval</div>
+              <div class="pref-note">ARP + mDNS + SSDP, reconciled against the DHCP leases your DNS service reports. 0 turns it off.</div>
+            </div>
+            <select id="pref-interval" aria-label="Sweep interval">
+              <option value="0">Off</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="15">Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+              <option value="60">Every hour</option>
+            </select>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Notify on new device</div>
+              <div class="pref-note">Windows notification when an unknown MAC appears on a sweep</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-notify" checked> On</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Start with the system</div>
+              <div class="pref-note">Launch minimised in the tray when you sign in</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-startup"> Off</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Deep port scan</div>
+              <div class="pref-note">Checks telnet, printer, HTTP admin and GREE UDP 7000 on this LAN only</div>
+            </div>
+            <select id="pref-ports" aria-label="Deep port scan">
+              <option value="off">Off</option>
+              <option value="weekly">With each audit, at most weekly</option>
+              <option value="every-scan">Every audit</option>
+            </select>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Firmware from device APIs</div>
+              <div class="pref-note">Read versions from the DNS service and TP-Link when a password is saved. Never invents a CVE.</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="pref-firmware" checked> On</label>
+          </div>
+          <div class="pref-row">
+            <div>
+              <div class="pref-label">Check for app updates</div>
+              <div class="pref-note">Installed builds only — GitHub Releases</div>
+            </div>
+            <button type="button" class="secondary" id="pref-update">Check now</button>
+          </div>
+        </div>
+
+        <div class="panel" id="pi-prefs-panel" style="margin-top:20px">
+          <div class="panel-head"><h2>Pi · SSH</h2></div>
+          <p class="muted" id="pi-prefs-note">SSH connection settings for the Pi. Saved on this PC and used for shell commands.</p>
+          <div class="prefs-list">
+            <form id="pi-ssh-form">
+              <div class="pref-row">
+                <div>
+                  <div class="pref-label">SSH port</div>
+                  <div class="pref-note">Default is 22. Set whatever port you expose (e.g. 2222) — Meshwatch will use it for shell commands.</div>
+                </div>
+                <input type="number" id="pref-ssh-port" min="1" max="65535" step="1" value="22" style="width:120px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
+              </div>
+              <div class="pref-row">
+                <div>
+                  <div class="pref-label">SSH username</div>
+                  <div class="pref-note">Account Meshwatch will use for SSH once key auth is connected</div>
+                </div>
+                <div class="inline-form">
+                  <input type="text" id="pref-ssh-user" value="admin" autocomplete="username" style="width:160px;border:2px solid var(--line);background:var(--bg);padding:8px 10px">
+                  <button type="submit" class="primary-inline">Save</button>
+                </div>
+              </div>
+            </form>
+            <div class="pref-row">
+              <div>
+                <div class="pref-label">Remembered host</div>
+                <div class="pref-note" id="pi-host-note">Not set yet</div>
+              </div>
+              <span class="muted" id="pi-host-value">—</span>
+            </div>
+            <div class="pref-row">
+              <div>
+                <div class="pref-label">API password</div>
+                <div class="pref-note" id="pi-api-note">DNS service API password — a Pi-hole 5 auth token, a Pi-hole 6 app password, or the AdGuard Home admin password. Stored with OS encryption.</div>
+              </div>
+              <form id="pi-api-form" class="inline-form">
+                <input type="password" id="pref-pi-api" placeholder="Paste password" autocomplete="off">
+                <button type="submit" class="primary-inline">Save</button>
+              </form>
+            </div>
+            <div class="pref-row">
+              <div>
+                <div class="pref-label">SSH private key</div>
+                <div class="pref-note" id="pi-key-note">OpenSSH key for the Pi. PuTTY .ppk files are not used.</div>
+              </div>
+              <button type="button" class="secondary" id="pref-ssh-key">Choose key…</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:20px">
+          <div class="panel-head"><h2>Credential vault</h2></div>
+          <p class="muted" id="cred-status">OS-backed encryption (DPAPI). Passwords never leave this machine.</p>
+          <p class="muted">The Pi's SSH login and DNS service password are managed above (Pi · SSH) and in the Pi tab — this vault is for other device admin logins (router, switch, and similar web UIs).</p>
+          <form id="cred-form" class="cred-form">
+            <select id="cred-mac" required></select>
+            <input type="text" id="cred-label" placeholder="Label (e.g. switch admin)" autocomplete="off">
+            <input type="text" id="cred-user" placeholder="Username" autocomplete="username">
+            <input type="password" id="cred-pass" placeholder="Password" autocomplete="new-password" required>
+            <button type="submit" class="primary-inline">Save</button>
+          </form>
+          <div id="cred-list"></div>
+        </div>
+
+        <div class="btn-row" style="margin-top:20px">
+          <button type="button" class="primary-inline" id="save-prefs">Save preferences</button>
+          <button type="button" class="secondary" id="export-csv">Export inventory CSV</button>
+        </div>
+
+        <div class="panel" style="margin-top:20px">
+          <div class="panel-head"><h2>Backup &amp; restore</h2></div>
+          <p class="muted">Copies the entire local database — devices, sightings, findings, notes, settings, and saved credentials — to a file you choose.</p>
+          <div class="btn-row">
+            <label><input type="checkbox" id="pref-backup-creds" checked> Include saved credentials (device logins and the DNS service password)</label>
+            <button type="button" class="secondary" id="pref-backup">Backup all data</button>
+            <button type="button" class="warn" id="pref-restore">Restore from backup…</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside id="detail" class="detail" hidden>
+      <div class="detail-head">
+        <div>
+          <div class="muted upper" id="detail-status">Online</div>
+          <h2 id="detail-name">Device</h2>
+        </div>
+        <button type="button" class="icon" id="detail-close" aria-label="Close">×</button>
+      </div>
+      <div id="detail-body"></div>
+      <div class="detail-actions" id="detail-actions"></div>
+    </aside>
+  </main>
+
+  <footer>
+    <span id="status">Idle</span>
+    <span id="update-status"></span>
+  </footer>
+
+  <div id="ctx" class="ctx" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 id="modal-title">Edit</h3>
+      <p class="muted" id="modal-hint"></p>
+      <textarea id="modal-input" rows="4"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="modal-cancel">Cancel</button>
+        <button type="button" class="primary-inline" id="modal-ok">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="browser" class="browser" hidden>
+    <div class="browser-bar">
+      <button type="button" id="browser-back" title="Back">←</button>
+      <button type="button" id="browser-forward" title="Forward">→</button>
+      <button type="button" id="browser-reload" title="Reload">↻</button>
+      <input type="text" id="browser-url" readonly>
+      <span id="browser-title" class="browser-title"></span>
+      <button type="button" id="browser-close" class="browser-close">Close</button>
+    </div>
+    <div id="browser-frame" class="browser-frame"></div>
+  </div>
+
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

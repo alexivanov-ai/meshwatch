@@ -1,0 +1,42 @@
+{
+  "subnet": null,
+  "known": [],
+  "riskyPorts": [
+    {
+      "port": 23,
+      "proto": "tcp",
+      "label": "telnet",
+      "severity": "critical"
+    },
+    {
+      "port": 9100,
+      "proto": "tcp",
+      "label": "raw print (JetDirect)",
+      "severity": "medium"
+    },
+    {
+      "port": 8888,
+      "proto": "tcp",
+      "label": "unauthenticated local API",
+      "severity": "high"
+    },
+    {
+      "port": 7000,
+      "proto": "udp",
+      "label": "unauthenticated local control API (used by some smart-appliance protocols)",
+      "severity": "critical"
+    },
+    {
+      "port": 1900,
+      "proto": "udp",
+      "label": "UPnP/SSDP",
+      "severity": "low"
+    },
+    {
+      "port": 80,
+      "proto": "tcp",
+      "label": "admin over plain HTTP",
+      "severity": "medium"
+    }
+  ]
+}

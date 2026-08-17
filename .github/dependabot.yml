@@ -1,0 +1,21 @@
+# Keep Electron (and thus Chromium) current without a separate Chromium
+# maintenance chore. Merging these PRs + shipping a Meshwatch release is how
+# end users get a newer Chromium via in-app auto-update.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    allow:
+      - dependency-name: electron
+      - dependency-name: electron-updater
+      - dependency-name: electron-builder
+    groups:
+      electron-stack:
+        patterns:
+          - "electron*"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"

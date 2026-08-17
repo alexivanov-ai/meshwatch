@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db
+
+# Local state and anything that could hold a secret
+meshwatch.db
+meshwatch.db-journal
+config/local.json
+.env
+
+# Planning/working docs - stay local, never committed
+docs/superpowers/
+.superpowers/

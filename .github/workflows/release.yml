@@ -1,0 +1,125 @@
+name: Build and release (Windows)
+
+# Every push to main builds the Windows installer and publishes it as a new
+# GitHub Release. Version is calendar-based: yyyy.mm.dd for the first build
+# of a given UTC day, yyyy.mm.dd-N for a same-day rebuild (N = 2, 3, ...).
+# That's the closest valid form to yyyy.mm.dd.xx that electron-builder's
+# strict semver check for package.json's "version" will accept - see the
+# compute-version step for why. The literal yyyy.mm.dd.xx format still shows
+# up as the installed exe's actual Windows file version (Explorer > Properties
+# > Details), via electron-builder's separate buildVersion option, which has
+# no such restriction.
+#
+# Auto-update (electron-updater) needs latest.yml + the .exe (+ .blockmap when
+# present) on the same GitHub Release. Installing a newer build with the same
+# appId replaces the previous install in place and keeps %APPDATA% data.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # Active LTS (Node 20 is EOL). Pin major so CI tracks 24.x patches.
+          node-version: "24"
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --quiet
+
+          YEAR=$(date -u +%Y)
+          MONTH_PAD=$(date -u +%m)
+          DAY_PAD=$(date -u +%d)
+          MONTH=${MONTH_PAD#0}
+          DAY=${DAY_PAD#0}
+          BASE="$YEAR.$MONTH.$DAY"
+
+          # Exact-match today's base tag, plus any "-N" rebuild tags - not a
+          # glob prefix match, which would wrongly count e.g. day 1 against day 10.
+          EXISTING=$(git tag -l "v$BASE" "v$BASE-*" | wc -l | tr -d ' ')
+          N=$((EXISTING + 1))
+
+          if [ "$N" -eq 1 ]; then
+            VERSION="$BASE"
+          else
+            VERSION="$BASE-$N"
+          fi
+          BUILD_VERSION="$YEAR.$MONTH_PAD.$DAY_PAD.$(printf '%02d' "$N")"
+
+          echo "Computed version=$VERSION build_version=$BUILD_VERSION tag=v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_version=$BUILD_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set package.json version
+        shell: bash
+        run: npm pkg set version="${{ steps.version.outputs.version }}"
+
+      - name: Install dependencies
+        # ignore-scripts is set in .npmrc so npm does not run the broken
+        # implicit "node-gyp rebuild" for better-sqlite3 (npm/cli#9837).
+        run: npm ci --no-audit --no-fund
+
+      - name: Download Electron binary
+        run: node scripts/ensure-electron.js
+
+      - name: Rebuild Windows icon
+        run: node scripts/make-icon.js
+
+      - name: Build Windows installer
+        # electron-builder detects CI and defaults to trying its own GitHub
+        # publish step, which needs GH_TOKEN we don't set - we publish
+        # ourselves via softprops/action-gh-release below instead.
+        # --publish never still writes latest.yml (required by electron-updater).
+        run: npm run build:win -- --config.buildVersion=${{ steps.version.outputs.build_version }} --publish never
+
+      - name: Find release artifacts
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la dist/
+          # Installer + latest.yml (+ blockmap if present) for in-app updates.
+          mapfile -t FILES < <(ls dist/*.exe dist/latest.yml dist/*.blockmap 2>/dev/null || true)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "No release artifacts found in dist/" >&2
+            exit 1
+          fi
+          echo "Found artifacts:"
+          printf '  %s\n' "${FILES[@]}"
+          {
+            echo "paths<<EOF"
+            printf '%s\n' "${FILES[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Meshwatch ${{ steps.version.outputs.version }}"
+          generate_release_notes: true
+          make_latest: true
+          files: ${{ steps.artifact.outputs.paths }}

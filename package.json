@@ -1,0 +1,80 @@
+{
+  "name": "meshwatch",
+  "productName": "Meshwatch",
+  "version": "0.1.0",
+  "description": "Home network monitoring dashboard - discovery, topology, firmware audit, TP-Link control, auto-detected DNS/DHCP backend",
+  "main": "src/main/index.js",
+  "author": "Home Monitoring",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "ensure:electron": "node scripts/ensure-electron.js",
+    "start": "node scripts/ensure-electron.js && electron .",
+    "start:debug": "node scripts/ensure-electron.js && electron . --enable-logging",
+    "test:discovery": "node scripts/test-discovery.js",
+    "build:win": "node scripts/ensure-electron.js && node scripts/make-icon.js && electron-builder --win nsis",
+    "build:mac": "node scripts/ensure-electron.js && electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "electron": "^43.4.0",
+    "electron-builder": "^25.0.5"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "bonjour-service": "^1.2.1",
+    "electron-updater": "^6.8.9",
+    "node-ssdp": "^4.0.1",
+    "ping": "^0.4.4",
+    "ssh2": "^1.15.0"
+  },
+  "build": {
+    "appId": "com.homemonitoring.meshwatch",
+    "productName": "Meshwatch",
+    "npmRebuild": false,
+    "directories": {
+      "buildResources": "build"
+    },
+    "icon": "build/icon.png",
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "files": [
+      "src/**/*",
+      "config/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ],
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": true,
+      "installerIcon": "build/installerIcon.ico",
+      "uninstallerIcon": "build/installerIcon.ico"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "alexivanov-ai",
+        "repo": "meshwatch"
+      }
+    ],
+    "mac": {
+      "icon": "build/icon.png",
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities"
+    }
+  }
+}

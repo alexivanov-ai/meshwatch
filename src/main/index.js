@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Tray, Menu, Notification, nativeImage } = require("electron");
 const path = require("path");
 const crypto = require("crypto");
+const fs = require("fs");
 const fsPromises = require("fs/promises");
 const db = require("./db");
 const discovery = require("./discovery");
@@ -57,17 +58,40 @@ function notify(title, body) {
   } catch (e) { /* ignore */ }
 }
 
-function trayIconPath() {
+function imageFromFile(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    const image = nativeImage.createFromBuffer(buf);
+    return image.isEmpty() ? nativeImage.createEmpty() : image;
+  } catch (e) {
+    return nativeImage.createEmpty();
+  }
+}
+
+function loadTrayImage() {
+  // These PNGs live under src/ so electron-builder packs them (its `files`
+  // list does not include `build/`, which is only installer chrome).
   const variant = nativeTheme.shouldUseDarkColors ? "dark" : "light";
-  return path.join(__dirname, "..", "..", "build", "tray", "tray-" + variant + "-2x.png");
+  const dir = path.join(__dirname, "assets", "tray");
+  let image = imageFromFile(path.join(dir, "tray-" + variant + ".png"));
+  const retina = imageFromFile(path.join(dir, "tray-" + variant + "@2x.png"));
+  if (!retina.isEmpty()) {
+    if (image.isEmpty()) image = retina;
+    else image.addRepresentation({ scaleFactor: 2, width: 32, height: 32, buffer: retina.toPNG() });
+  }
+  if (image.isEmpty()) image = nativeImage.createFromPath(iconPath());
+  // Packaged Windows builds carry the app icon on the exe itself.
+  if (image.isEmpty() && process.platform === "win32") {
+    image = nativeImage.createFromPath(process.execPath);
+  }
+  return image;
 }
 
 function createTray() {
   if (tray) return;
-  let image = nativeImage.createFromPath(trayIconPath());
-  if (image.isEmpty()) image = nativeImage.createFromPath(iconPath());
+  let image = loadTrayImage();
   if (image.isEmpty()) image = nativeImage.createEmpty();
-  tray = new Tray(image.resize({ width: 16, height: 16 }));
+  tray = new Tray(image);
   tray.setToolTip("Meshwatch");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Meshwatch", click: () => showWindow() },
@@ -78,9 +102,12 @@ function createTray() {
     { type: "separator" },
     { label: "Quit", click: () => { app.quit(); } }
   ]));
+  if (process.platform === "win32") tray.setIgnoreDoubleClickEvents(true);
   tray.on("click", () => showWindow());
   nativeTheme.on("updated", () => {
-    if (tray) tray.setImage(nativeImage.createFromPath(trayIconPath()).resize({ width: 16, height: 16 }));
+    if (!tray) return;
+    const next = loadTrayImage();
+    if (!next.isEmpty()) tray.setImage(next);
   });
 }
 

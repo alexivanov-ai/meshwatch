@@ -12,6 +12,9 @@ categorized).
 
 ## [Unreleased]
 
+- Fixed the system tray icon missing from installed Windows builds. The
+  tray pictures were never included in the installer, so the tray slot
+  was blank.
 - Added a linting workflow: ESLint for the JS (main process, preload,
   renderer, scripts), markdownlint-cli2 for the docs, PSScriptAnalyzer for
   `scripts/make-icon.ps1`, and general repo hygiene (trailing whitespace,

@@ -38,6 +38,7 @@
     "appId": "com.homemonitoring.meshwatch",
     "productName": "Meshwatch",
     "npmRebuild": false,
+    "beforePack": "./scripts/patch-nsis-details.js",
     "directories": {
       "buildResources": "build"
     },

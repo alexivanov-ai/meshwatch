@@ -12,6 +12,11 @@ categorized).
 
 ## [Unreleased]
 
+- Fixed light text showing up in light theme (and dark text in dark
+  theme) on dropdowns, search boxes and checkboxes — they were following
+  Windows' theme instead of Meshwatch's.
+- Hid "Scan network now" on the Discovery page after a sweep has already
+  run; Rescan on that page is the same action.
 - Fixed the system tray icon missing from installed Windows builds. The
   tray pictures were never included in the installer, so the tray slot
   was blank.

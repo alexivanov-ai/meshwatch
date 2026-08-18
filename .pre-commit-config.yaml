@@ -1,0 +1,46 @@
+# Pre-commit configuration for Meshwatch.
+#
+# Setup:   pip install pre-commit && pre-commit install
+# Run now: pre-commit run --all-files
+# See https://pre-commit.com
+#
+# Vendored third-party code (src/renderer/vendor/) and the generated OUI
+# data table are excluded repo-wide — neither is ours to lint or reformat.
+exclude: ^src/renderer/vendor/
+
+repos:
+  # General repository hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-json
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
+      - id: check-added-large-files
+        # Regenerated offline from the IEEE OUI registry (see
+        # scripts/build-oui.js) — legitimately large, not an accidental commit.
+        exclude: ^src/main/oui-data\.json$
+
+  # JavaScript linting (main process, preload, renderer, scripts) — runs
+  # the project's own eslint via its own eslint.config.js, so the rule set
+  # and ESLint version always match what's pinned in package.json.
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: npx --no-install eslint
+        language: system
+        files: \.js$
+
+  # Markdown linting (README, CLAUDE.md, docs/) — rule relaxations for this
+  # repo's prose docs live in .markdownlint.yaml.
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.2
+    hooks:
+      - id: markdownlint-cli2

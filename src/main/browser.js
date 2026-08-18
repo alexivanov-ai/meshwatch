@@ -53,6 +53,20 @@ function ensureView() {
     if (!isLanUrl(url)) event.preventDefault();
   });
 
+  // Many router/switch admin UIs (the gateway especially) serve HTTPS with a
+  // self-signed cert; Electron rejects that by default and the page silently
+  // fails to load (did-fail-load with no obvious cause to a non-developer
+  // user). Trust it only for the private-LAN hosts isLanUrl already scopes
+  // this whole view to — never for a public address.
+  wc.on("certificate-error", (event, url, error, certificate, callback) => {
+    if (isLanUrl(url)) {
+      event.preventDefault();
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
   wc.on("did-navigate", (_e, url) => send("browser:navigated", { url }));
   wc.on("did-navigate-in-page", (_e, url) => send("browser:navigated", { url }));
   wc.on("page-title-updated", (_e, title) => send("browser:title", { title }));

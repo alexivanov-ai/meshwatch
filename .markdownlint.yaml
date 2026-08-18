@@ -1,0 +1,6 @@
+# Rule config for markdownlint-cli2 (docs/, README.md, CLAUDE.md).
+# Relaxed for this repo's long-form prose docs, which are not hard-wrapped
+# to a fixed column and use a standalone bold line as an inline lead-in
+# label (e.g. "**Main process.** ...") rather than a heading.
+MD013: false # line-length
+MD036: false # emphasis used instead of a heading

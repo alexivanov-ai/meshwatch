@@ -271,7 +271,6 @@ function packageResult(all) {
 
 async function run(devices, opts) {
   const list = devices || db.listDevices();
-  const prefs = db.getPrefs();
   const wantPorts = !opts || opts.scanPorts !== false;
   if (wantPorts) {
     const scanned = await ports.scanDevices(list);

@@ -12,9 +12,9 @@ LAN.
 Meshwatch is an Electron app, which means it always runs as (at least) three
 separate processes with different privilege levels:
 
-```
-┌─────────────────────────────┐        ┌──────────────────────────────┐
-│  Main process (Node.js)      │        │  Renderer process (Chromium)  │
+```text
+┌───────────────────────────────┐        ┌────────────────────────────────┐
+│  Main process (Node.js)       │        │  Renderer process (Chromium)   │
 │  src/main/*.js                │  IPC   │  src/renderer/*                │
 │  - full OS access             │◄──────►│  - plain HTML/CSS/JS UI        │
 │  - network sockets, SSH, SNMP │        │  - contextIsolation: true      │
@@ -26,12 +26,12 @@ separate processes with different privilege levels:
                └──────────── (contextBridge) ─────────────┘
                         the only crossing point
 
-┌──────────────────────────────────────┐
-│  Admin-page view (Chromium, isolated) │
+┌────────────────────────────────────────┐
+│  Admin-page view (Chromium, isolated)  │
 │  src/main/browser.js — WebContentsView │
-│  - no preload, sandboxed              │
-│  - LAN URLs only                      │
-└──────────────────────────────────────┘
+│  - no preload, sandboxed               │
+│  - LAN URLs only                       │
+└────────────────────────────────────────┘
 ```
 
 **Main process.** Everything privileged lives here: network scanning, SSH
@@ -87,6 +87,20 @@ Electron's bundled Chromium (not the system browser), so its capabilities
 and patch level track Electron/Meshwatch releases rather than whatever
 browser happens to be installed on the host.
 
+The view's address bar is user-editable, not just a display of whatever URL
+opened it — the same LAN-only allowlist gates a typed address exactly like
+a button-opened one, so making it editable widens what the user can *reach*
+without widening what the view will *accept*. The view also trusts a
+self-signed TLS certificate, but again only for a host that already passes
+the LAN-only check: router and switch admin UIs are the class of device
+most likely to force HTTPS with a cert nothing will ever have signed, and
+Electron's default (silently refuse the connection) turned that into a
+page that just wouldn't load, with no indication why. Accepting the cert
+here doesn't relax the trust boundary — a self-signed cert on a LAN address
+Meshwatch already restricted itself to is a materially different risk than
+accepting one for an arbitrary internet host, which this code path can
+never reach in the first place.
+
 ## 3. Major subsystems
 
 Each of these lives in its own module under `src/main/` with a single,
@@ -94,7 +108,7 @@ narrow responsibility. Keeping them separate means a change to one (say,
 switching which DNS server product is detected) never has to touch
 unrelated code (say, SSH terminal handling).
 
-**Discovery — `src/main/discovery.js`.** The core of the app: finds what's
+**Discovery —** `src/main/discovery.js`**.** The core of the app: finds what's
 on the LAN and merges results by MAC address across several independent
 signals — an unprivileged ICMP ping sweep followed by a read of the OS ARP
 table (works without elevated privileges or a packet-capture driver), mDNS/
@@ -106,7 +120,7 @@ same build works unmodified on any user's LAN. It is a separate module
 because it is the one piece every other subsystem in the app depends on:
 nothing else has an opinion about what's out there until discovery has run.
 
-**DNS backend adapters — `src/main/dns/`.** Many home networks run their DNS
+**DNS backend adapters —** `src/main/dns/`**.** Many home networks run their DNS
 and DHCP service on a Raspberry Pi. Rather than assuming which DNS/DHCP
 product runs on it, `dns/index.js` probes for the handful of server products
 Meshwatch knows how to talk to, caches which one (if any) answered, and
@@ -115,7 +129,7 @@ matching adapter module. This indirection exists so that adding support for
 another backend is a new adapter file, not a rewrite of every caller, and so
 the rest of the app never has to special-case "which DNS product is this."
 
-**Pi system administration + terminal — `src/main/pi.js`.** Generic SSH
+**Pi system administration + terminal —** `src/main/pi.js`**.** Generic SSH
 plumbing for a Raspberry Pi acting as the network's DNS/DHCP host: resolving
 the SSH target, running remote commands, package-update checks, and a live
 interactive terminal session bridged to the renderer. Meshwatch recognizes a
@@ -131,7 +145,7 @@ explicit list of disruptive commands (service restarts, package upgrades,
 reboot, shutdown) so those can be intercepted and confirmed before they run,
 rather than trusting every caller to remember.
 
-**Generic service discovery — `src/main/pi-services.js`.** Once connected
+**Generic service discovery —** `src/main/pi-services.js`**.** Once connected
 over SSH, this lists whatever ports the box is actually listening on and
 probes each with a plain HTTP GET, matching the response against a small
 catalog of common self-hosted services (media servers, download clients,
@@ -142,7 +156,7 @@ page title always wins over an assumption. It is separate from `pi.js`
 because it is optional, best-effort labelling on top of the SSH access
 `pi.js` already provides, not a required part of reaching the box.
 
-**Credential vault — `src/main/credentials.js`.** Local, encrypted storage
+**Credential vault —** `src/main/credentials.js`**.** Local, encrypted storage
 for any device login the user chooses to save, keyed by device MAC.
 Encryption uses Electron's `safeStorage`, which defers to the operating
 system's own credential protection rather than a bespoke scheme or a
@@ -156,7 +170,7 @@ subsystem needs a password, because every subsystem that needs credentials
 through the same storage and disclosure discipline instead of each
 inventing its own.
 
-**Security audit — `src/main/audit.js`.** Turns the current device
+**Security audit —** `src/main/audit.js`**.** Turns the current device
 inventory into a list of findings — end-of-support hardware, firmware
 behind the vendor's latest, open ports, weak or default-feeling
 configuration — with a severity and a plain-language explanation for each.
@@ -168,7 +182,7 @@ than a one-off snapshot. It lives apart from discovery because it is a pure
 function of the inventory discovery already produced — it consumes device
 records, it doesn't gather them.
 
-**TP-Link control — `src/main/tplink.js`.** Talks to TP-Link consumer
+**TP-Link control —** `src/main/tplink.js`**.** Talks to TP-Link consumer
 router/extender hardware over the same unofficial encrypted local endpoint
 their own web UI uses (there is no public API), using credentials pulled
 from the vault. Actions are split into safe (status, client list) and
@@ -186,7 +200,7 @@ silently assuming otherwise.
 A scan is the central data-flow event in the app; everything else in the
 renderer is a view over its results.
 
-```
+```text
  renderer                 preload            main process
  ────────                 ───────            ────────────
  "Scan" click
@@ -253,7 +267,7 @@ return value that way rather than passing a raw row straight through.
 The rules below are enforced throughout the codebase (see `CLAUDE.md` for
 the authoritative list); this section explains the reasoning behind each.
 
-**Process isolation (`contextIsolation: true`, `nodeIntegration: false`,
+**Process isolation (**`contextIsolation: true`**,** `nodeIntegration: false`**,
 narrow preload bridge).** The renderer routinely displays strings that
 originate from other devices on the network — hostnames, mDNS names, web
 page titles picked up by the probe. None of that is trusted input. If the
@@ -271,7 +285,7 @@ homegrown scheme or a bundled secret) means the ciphertext is worthless
 without the same OS user account on the same machine, and the app never has
 to invent or audit its own crypto.
 
-**`config/devices.json` never asserts an IP unless the user confirmed it.**
+`config/devices.json` **never asserts an IP unless the user confirmed it.**
 This file previously hardcoded addresses for devices the user had only
 described in general terms (make/model), and one of those guesses was wrong
 in a way that silently mislabeled a real device on a real scan. IP
@@ -306,7 +320,7 @@ than expected. Gating these behind an explicit confirmation that states how
 long the disruption will last turns "oops, I clicked the wrong button" from
 a network outage into a decision the user consciously made.
 
-**Scanning is confined to the local private `/24`, detected at runtime.**
+**Scanning is confined to the local private** `/24`**, detected at runtime.**
 A network monitor with no boundary is a scanning tool that could be pointed
 at other people's infrastructure, intentionally or by a bug. Deriving the
 boundary from the OS's own interface configuration at runtime — rather than

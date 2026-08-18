@@ -21,6 +21,9 @@ const state = {
   scanProgress: 0,
   auditFilter: "all",
   piStats: null,
+  piApps: [],
+  piAppsReason: null,
+  piAppsQuery: "",
   prefs: loadPrefs()
 };
 
@@ -892,7 +895,6 @@ async function loadPi() {
       ? target.host + " · SSH " + target.user + "@" + target.host + ":" + target.port
       : "No host remembered yet";
     $("#pi-host-line").textContent = hostLine;
-    $("#pi-ssh-target").textContent = hostLine;
 
     $("#pi-open-admin").onclick = () => target.host && openInAppBrowser("http://" + target.host + "/");
     const logBtn = $("#pi-open-log");
@@ -951,12 +953,9 @@ async function loadPi() {
     $("#pi-reboot-banner").hidden = !reboot;
 
     const apps = await window.meshwatch.pi.installedApps();
-    const appsEl = $("#pi-apps");
-    const hasApps = !!(apps.ok && apps.apps.length);
-    appsEl.classList.toggle("empty", !hasApps);
-    appsEl.innerHTML = hasApps
-      ? apps.apps.map((a) => '<div class="node-row"><span>' + escapeHtml(a.name) + "</span></div>").join("")
-      : escapeHtml(apps.ok ? "No manually-installed apps found." : (apps.reason || "Could not read installed apps."));
+    state.piApps = apps.ok ? apps.apps : [];
+    state.piAppsReason = apps.ok ? null : (apps.reason || "Could not read installed apps.");
+    renderPiApps();
 
     // Only ever open an SSH shell while the Pi tab is the visible view. This
     // function is also reached from Preferences (after saving an API
@@ -1047,7 +1046,10 @@ function renderPiServices(list) {
   el.classList.toggle("empty", !list.length);
   el.innerHTML = list.length
     ? "<ul>" + list.map((s) =>
-        "<li>" + escapeHtml(s.name) + (s.name === "Unknown service" ? ' <span class="est">estimate</span>' : "") +
+        "<li>" + escapeHtml(s.name) + (s.name === "Unknown service"
+          ? ' <span class="est" title="Meshwatch could not identify this service from its response — it only knows the port it answered on' +
+            (s.title ? " and the page title below" : "") + '.">not identified</span>'
+          : "") +
         " · port " + escapeHtml(String(s.port)) + (s.title ? " · " + escapeHtml(s.title) : "") +
         ' <button type="button" class="pi-svc-open" data-url="' + escapeHtml(s.url) + '">Open</button></li>'
       ).join("") + "</ul>"
@@ -1073,39 +1075,64 @@ if (piServicesToggle) {
   });
 }
 
+function renderPiApps() {
+  const el = $("#pi-apps");
+  const q = state.piAppsQuery.trim().toLowerCase();
+  const apps = q ? state.piApps.filter((a) => a.name.toLowerCase().includes(q)) : state.piApps;
+  const hasApps = apps.length > 0;
+  el.classList.toggle("empty", !hasApps);
+  el.innerHTML = hasApps
+    ? apps.map((a) => '<div class="node-row"><span>' + escapeHtml(a.name) + "</span></div>").join("")
+    : escapeHtml(state.piAppsReason || (q ? "No installed apps match \"" + state.piAppsQuery + "\"." : "No manually-installed apps found."));
+}
+
+$("#pi-apps-search").addEventListener("input", (e) => {
+  state.piAppsQuery = e.target.value;
+  renderPiApps();
+});
+
+const piAppsToggle = $("#pi-apps-toggle");
+if (piAppsToggle) {
+  piAppsToggle.addEventListener("click", () => {
+    const body = $("#pi-apps-body");
+    const collapsed = body.hidden;
+    body.hidden = !collapsed;
+    piAppsToggle.textContent = collapsed ? "Collapse" : "Expand";
+    piAppsToggle.setAttribute("aria-expanded", String(collapsed));
+  });
+}
+
 $("#pi-apt-check").addEventListener("click", async () => {
   const resultEl = $("#pi-apt-result");
   resultEl.classList.remove("empty");
-  resultEl.textContent = "Checking…";
+  resultEl.innerHTML = '<div class="apt-check-headline">Checking…</div>';
   const r = await window.meshwatch.pi.aptCheck();
   resultEl.innerHTML = r.ok
-    ? (r.count ? r.count + " package(s) upgradable: " + r.packages.map((p) => escapeHtml(p.name)).join(", ") : "Everything is up to date.")
-    : escapeHtml(r.reason || "Check failed");
+    ? (r.count
+        ? '<div class="apt-check-headline">' + r.count + " package" + (r.count === 1 ? "" : "s") + " upgradable</div>" +
+          '<div class="apt-check-packages">' + r.packages.map((p) => escapeHtml(p.name)).join(", ") + "</div>"
+        : '<div class="apt-check-headline ok">Everything is up to date.</div>')
+    : '<div class="apt-check-headline warn">' + escapeHtml(r.reason || "Check failed") + "</div>";
 });
 
 $("#pi-apt-upgrade").addEventListener("click", async () => {
-  const r = await window.meshwatch.pi.aptUpgrade();
-  if (r && r.cancelled) return toast("Cancelled");
-  $("#pi-out").textContent = (r.output || []).join("\n");
-  toast(r.code ? "Upgrade finished with errors — see output below" : "Upgrade complete");
-  loadPi();
-});
-
-async function runPiCmd(command) {
-  const out = $("#pi-out");
-  out.textContent = "$ " + command + "\n…";
+  const out = $("#pi-apt-out");
+  out.hidden = false;
+  out.textContent = "Starting upgrade…\n";
+  const off = window.meshwatch.pi.onAptProgress(({ chunk }) => {
+    out.textContent += chunk;
+    out.scrollTop = out.scrollHeight;
+  });
   try {
-    const r = await window.meshwatch.pi.exec(command);
-    if (r.cancelled) {
-      out.textContent = "Cancelled.";
-      toast("Command cancelled");
-      return;
-    }
-    out.textContent = "$ " + command + "\n" + (r.output || []).join("\n");
-  } catch (e) {
-    out.textContent = "Error: " + e.message;
+    const r = await window.meshwatch.pi.aptUpgrade();
+    if (r && r.cancelled) { out.hidden = true; return toast("Cancelled"); }
+    out.textContent = (r.output || []).join("\n");
+    toast(r.code ? "Upgrade finished with errors — see output below" : "Upgrade complete");
+    loadPi();
+  } finally {
+    off();
   }
-}
+});
 
 function updateScanChrome() {
   const sub = state.subnet;
@@ -1842,12 +1869,6 @@ document.addEventListener("click", (e) => {
   if (!ctxEl.hidden && !ctxEl.contains(e.target)) hideCtx();
 });
 
-$("#pi-form").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const cmd = $("#pi-cmd").value.trim();
-  if (cmd) runPiCmd(cmd);
-});
-
 if (window.meshwatch.onUpdateStatus) {
   window.meshwatch.onUpdateStatus((s) => {
     const el = $("#update-status");
@@ -1896,6 +1917,20 @@ $("#browser-reload").addEventListener("click", () => window.meshwatch.browser.re
 $("#browser-close").addEventListener("click", () => closeInAppBrowser());
 window.addEventListener("resize", () => reportBrowserBounds());
 
+const browserUrlInput = $("#browser-url");
+browserUrlInput.addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  let typed = browserUrlInput.value.trim();
+  if (!typed) return;
+  if (!/^https?:\/\//i.test(typed)) typed = "http://" + typed;
+  const r = await window.meshwatch.browser.open(typed);
+  if (!r || !r.ok) {
+    toast((r && r.reason) || "Could not open page");
+    browserUrlInput.value = (await window.meshwatch.browser.getUrl()).url || "";
+  }
+  browserUrlInput.blur();
+});
+
 window.meshwatch.browser.on("opened", ({ url }) => {
   $("#browser").hidden = false;
   $("#browser-url").value = url || "";
@@ -1913,8 +1948,11 @@ window.meshwatch.browser.on("title", ({ title }) => {
 window.meshwatch.browser.on("loading", ({ loading }) => {
   $("#browser-reload").textContent = loading ? "…" : "↻";
 });
-window.meshwatch.browser.on("error", ({ desc }) => {
-  toast("Page failed: " + (desc || "load error"));
+window.meshwatch.browser.on("error", ({ code, desc }) => {
+  // -3 is Chromium's ERR_ABORTED, fired on ordinary redirects/cancellations —
+  // not a real failure, so don't alarm the user with a toast for it.
+  if (code === -3) return;
+  toast("Page failed: " + (desc || "load error") + (code ? " (" + code + ")" : ""));
 });
 window.meshwatch.browser.on("needBounds", () => reportBrowserBounds());
 

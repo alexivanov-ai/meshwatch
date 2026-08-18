@@ -52,7 +52,8 @@ contextBridge.exposeInMainWorld("meshwatch", {
     rebootRequired: () => ipcRenderer.invoke("pi:rebootRequired"),
     hostStats: () => ipcRenderer.invoke("pi:hostStats"),
     servicesList: () => ipcRenderer.invoke("pi:services:list"),
-    servicesRescan: () => ipcRenderer.invoke("pi:services:rescan")
+    servicesRescan: () => ipcRenderer.invoke("pi:services:rescan"),
+    onAptProgress: (cb) => on("pi:apt:progress", cb)
   },
 
   terminal: {

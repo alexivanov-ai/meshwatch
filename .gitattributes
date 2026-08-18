@@ -1,0 +1,16 @@
+# Normalize every text file to LF on checkin, regardless of which OS or
+# editor touched it — this is what pre-commit's mixed-line-ending hook
+# enforces going forward; this file is what keeps it from drifting again
+# between contributors' local core.autocrlf settings.
+* text=auto eol=lf
+
+# Binary assets — never touched by line-ending normalization or diffed as text.
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

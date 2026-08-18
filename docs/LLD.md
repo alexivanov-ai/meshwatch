@@ -4,8 +4,8 @@ This document is module-level detail for contributors extending Meshwatch:
 the complete SQLite schema, the complete IPC channel catalog, the DNS
 backend adapter contract, the Pi terminal protocol, and the service-detection
 catalog format. Everything here was derived by reading the current source
-files listed under each section — not from the phase plan documents, which
-describe intent at the time each task was written and do not reflect
+files listed under each section — not from planning documents, which
+describe intent at the time a task was written and do not reflect
 self-corrections made during implementation. See `docs/HLD.md` for the
 architecture-level picture this document assumes.
 
@@ -235,6 +235,7 @@ preload wrapper exists (renderer cannot reach that channel today).
 
 Push events (not `ipcMain` channels — `win.webContents.send`, subscribed via
 `onScanProgress`/`onScanFinished`):
+
 - `scan:started` — `{ reason }`
 - `scan:progress` — `{ stage, detail }`, streamed per discovery stage
 - `scan:finished` — `{ count, newDevices }`
@@ -292,15 +293,17 @@ Push events (not `ipcMain` channels — `win.webContents.send`, subscribed via
 | `pi:hasPassword` | invoke | none | boolean | `pi.hasPassword()` |
 | `pi:setPassword` | invoke | `{ password }` | `{ ok: true }` / `{ ok: false, reason }` | `pi.setPassword(password)` |
 | `pi:pickKey` | invoke | none | `{ ok, path? , cancelled? }` (opens a native file dialog) | `pi.pickKey()` |
-| `pi:exec` | invoke | `{ command }` | `{ output: string[], code, target? }` (via `confirmedExec`, see §4) | `pi.exec(command)` |
+| `pi:exec` | invoke | `{ command }` | `{ output: string[], code, target? }` (via `confirmedExec()` in `index.js` — runs `pi.isDisruptive(command)` against `pi.js`'s `DISRUPTIVE` list first and shows a confirmation dialog before executing if it matches, per Hard Rule 5) | `pi.exec(command)` — not currently called from any renderer UI (the one-shot command-runner form that used it was removed; the embedded terminal, §4, is the interactive replacement) but still reachable through the bridge |
 | `pi:apt:check` | invoke | none | `{ ok, count, packages }` / `{ ok: false, reason }` | `pi.aptCheck()` |
-| `pi:apt:upgrade` | invoke | none | same shape as `pi:exec`, gated behind the disruptive-command dialog | `pi.aptUpgrade()` |
+| `pi:apt:upgrade` | invoke | none | same shape as `pi:exec`, gated behind the disruptive-command dialog; streams live output as it runs (see push events below) before resolving with the full buffered result | `pi.aptUpgrade()` |
 | `pi:apt:apps` | invoke | none | `{ ok, apps }` / `{ ok: false, reason }` | `pi.installedApps()` |
 | `pi:rebootRequired` | invoke | none | boolean | `pi.rebootRequired()` |
 | `pi:hostStats` | invoke | none | `{ uptime, diskUsedPercent, diskUsed, diskTotal, cpuCores, loadAvg }` | `pi.hostStats()` |
 | `pi:services:list` | invoke | none | cached `pi_services` rows (§1.7) with `url` added | `pi.servicesList()` |
 | `pi:services:rescan` | invoke | none | fresh `discoverServices()` result, also persisted | `pi.servicesRescan()` |
 | `pi:block` | invoke | `{ mac, blocked }` | `dns.blockClient()` result; sets `devices.blocked` on success | `pi.block(mac, blocked)` |
+
+Push event (not an `ipcMain` channel — `win.webContents.send`, subscribed via `pi.onAptProgress`): `pi:apt:progress` — `{ chunk }`, one per raw stdout/stderr chunk received over SSH while `pi:apt:upgrade` is running, fired from the `onChunk` callback threaded through `confirmedExec()` → `pi.exec()`. `pi:exec` itself accepts the same `onChunk` parameter in `pi.js` but `index.js` only wires it up for the apt-upgrade call today.
 
 Terminal channels (`pi:term:*`) are documented separately in §4.
 
@@ -339,7 +342,24 @@ Push events for the browser view (`win.webContents.send`, subscribed via
 `browser:*` event channels): `opened`→`browser:opened`,
 `closed`→`browser:closed`, `navigated`→`browser:navigated`,
 `title`→`browser:title`, `loading`→`browser:loading`, `error`→`browser:error`,
-`needBounds`→`browser:need-bounds`.
+`needBounds`→`browser:need-bounds`. The `error` payload is
+`{ code, desc, url }` from Chromium's `did-fail-load`; the renderer ignores
+`code === -3` (`ERR_ABORTED`, fired on ordinary redirects/cancellations, not
+a real failure) and otherwise toasts `desc` plus the numeric `code`.
+
+`browser:open` is reachable two ways from the renderer: the buttons/links
+that open a device's admin page, and the in-app browser's own address-bar
+input (`#browser-url`) — editable, not read-only — which normalizes a typed
+value to `http://` if no scheme was given and calls the same channel on
+Enter. Either path is subject to the same `isLanUrl()` allowlist in
+`browser.js`; a rejected address reverts the field to the real current URL.
+
+`browser.js`'s `WebContentsView` also accepts a self-signed TLS certificate
+on `certificate-error`, but only when the navigating URL passes the same
+`isLanUrl()` check — never for a public address. This exists because
+router/switch admin UIs (the gateway most of all) commonly force HTTPS with
+a self-signed cert, which Electron rejects by default with no visible
+explanation to the user beyond a failed load.
 
 ### 2.10 Update / app info
 
@@ -372,6 +392,7 @@ Source: `src/main/dns/index.js`, `src/main/dns/ftl.js`, `src/main/dns/adguard.js
 
 `dns/index.js` never assumes which DNS/DHCP product runs on the discovered
 Pi. `detectBackend()` probes both concurrently:
+
 - `probeAdguard(host)` — GET `http://<host>/control/status`; treats a 200
   with a `dns_addresses` array, or a bare 401/403 (needs auth but is
   recognizably AdGuard), as a hit.
@@ -396,7 +417,8 @@ Both adapter modules export the same five-function shape:
 
 **`StatsResult` shape**, common to both adapters (fields vary slightly —
 noted where they differ):
-```
+
+```text
 {
   available: boolean,
   reason?: string,            // present when available: false
@@ -414,9 +436,11 @@ noted where they differ):
 ```
 
 **`Lease` shape**, common to both adapters:
-```
+
+```text
 { ip, mac, hostname, expiry, expires }
 ```
+
 `expiry` is the raw backend value (epoch seconds/ms, or an ISO date for
 AdGuard's static leases); `expires` is a pre-formatted human string
 (`"expired"`, `"12 m"`, `"3 h"`, `"static"`, etc.).
@@ -508,7 +532,8 @@ for each remaining port does a plain GET (`probeTitle()`, 3s timeout,
 `matchCatalog()`.
 
 **`KNOWN_SERVICES` entry shape:**
-```
+
+```text
 {
   port: number,        // default port the service listens on
   titleRe?: RegExp,     // optional: confirm/override by observed <title>
@@ -516,6 +541,7 @@ for each remaining port does a plain GET (`probeTitle()`, 3s timeout,
   category: string       // e.g. "media", "downloads", "monitoring", "sync", "management", "home-automation"
 }
 ```
+
 Thirteen entries as of this pass (Plex, qBittorrent, Transmission, Deluge,
 Portainer, Home Assistant, Sonarr, Radarr, Bazarr, Jellyfin, Grafana,
 Syncthing, Uptime Kuma).
@@ -528,9 +554,11 @@ self-identifies). No match is an expected, ordinary outcome, not an error.
 
 **Unmatched representation** — a listening port with no catalog hit is still
 returned and persisted, never dropped and never guessed at (Hard Rule 4):
-```
+
+```text
 { port, name: "Unknown service", category: "unknown", title: <observed title or null>, url }
 ```
+
 A matched port has the same shape with `name`/`category` from the catalog
 entry and `title` still set to whatever was actually observed (a real
 observed title is not replaced by the catalog's assumption). Results are

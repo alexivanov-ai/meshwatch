@@ -173,18 +173,15 @@
             <button type="button" id="pi-apt-upgrade" class="warn">Upgrade all</button>
           </div>
           <div id="pi-apt-result" class="empty"></div>
-          <h2 class="subhead">Installed apps</h2>
-          <div id="pi-apps" class="empty"></div>
-        </div>
-
-        <div class="panel">
-          <h2 class="subhead">Command runner</h2>
-          <span class="muted" id="pi-ssh-target"></span>
-          <form id="pi-form" class="cmd-form">
-            <input type="text" id="pi-cmd" placeholder="Arbitrary command…" autocomplete="off">
-            <button type="submit">Run</button>
-          </form>
-          <pre id="pi-out" class="log"></pre>
+          <pre id="pi-apt-out" class="log" hidden></pre>
+          <div class="panel-head" style="margin-top:16px">
+            <h2 class="subhead" style="margin:0">Installed apps</h2>
+            <button type="button" class="ghost" id="pi-apps-toggle" aria-expanded="true" aria-controls="pi-apps-body">Collapse</button>
+          </div>
+          <div id="pi-apps-body">
+            <input type="search" id="pi-apps-search" placeholder="Filter installed apps…" autocomplete="off">
+            <div id="pi-apps" class="empty"></div>
+          </div>
         </div>
       </div>
 
@@ -413,7 +410,7 @@
       <button type="button" id="browser-back" title="Back">←</button>
       <button type="button" id="browser-forward" title="Forward">→</button>
       <button type="button" id="browser-reload" title="Reload">↻</button>
-      <input type="text" id="browser-url" readonly>
+      <input type="text" id="browser-url" spellcheck="false" placeholder="http://192.168.1.1/">
       <span id="browser-title" class="browser-title"></span>
       <button type="button" id="browser-close" class="browser-close">Close</button>
     </div>

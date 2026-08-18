@@ -286,7 +286,7 @@ ipcMain.handle("pi:pickKey", async () => {
   db.setSetting("pi_ssh_key", r.filePaths[0]);
   return { ok: true, path: r.filePaths[0] };
 });
-async function confirmedExec(command) {
+async function confirmedExec(command, onChunk) {
   if (pi.isDisruptive(command)) {
     const { response } = await dialog.showMessageBox(win, {
       type: "warning",
@@ -301,12 +301,14 @@ async function confirmedExec(command) {
     });
     if (response !== 1) return { cancelled: true, output: [] };
   }
-  return pi.exec(command);
+  return pi.exec(command, onChunk);
 }
 
 ipcMain.handle("pi:exec", async (_e, { command }) => confirmedExec(command));
 ipcMain.handle("pi:apt:check", () => pi.aptCheckUpdates());
-ipcMain.handle("pi:apt:upgrade", async () => confirmedExec(pi.aptUpgradeCommand()));
+ipcMain.handle("pi:apt:upgrade", async () =>
+  confirmedExec(pi.aptUpgradeCommand(), (chunk) => win.webContents.send("pi:apt:progress", { chunk }))
+);
 ipcMain.handle("pi:apt:apps", () => pi.installedApps());
 ipcMain.handle("pi:rebootRequired", () => pi.rebootRequired());
 ipcMain.handle("pi:hostStats", () => pi.hostStats());

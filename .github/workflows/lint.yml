@@ -1,0 +1,55 @@
+name: Lint
+run-name: Lint
+
+# Runs on every commit pushed to an open PR. cancel-in-progress means a new
+# commit landing mid-run cancels whatever was still checking the previous
+# one, so only the latest commit's result ever matters.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions: read-all
+
+jobs:
+  pre_commit_linters:
+    name: pre_commit_linters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      # .npmrc already sets ignore-scripts=true, so this never triggers
+      # better-sqlite3's node-gyp rebuild — this job only lints, it never
+      # runs the app.
+      - name: Install dependencies
+        run: npm ci
+
+      # eslint (a local, language: system hook in .pre-commit-config.yaml)
+      # runs via `npx eslint`, so it needs the just-installed node_modules;
+      # every other hook manages its own environment.
+      - name: Run pre-commit hooks
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+
+      - name: Run PowerShell script analysis
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $issues = Invoke-ScriptAnalyzer -Path ./scripts -Recurse
+          $errors = $issues.Where({ $_.Severity -eq 'Error' })
+          $warnings = $issues.Where({ $_.Severity -eq 'Warning' })
+          $issues | Format-Table -AutoSize
+          if ($errors) {
+            Write-Error "There were $($errors.Count) error(s) and $($warnings.Count) warning(s) total." -ErrorAction Stop
+          } else {
+            Write-Output "There were $($errors.Count) error(s) and $($warnings.Count) warning(s) total."
+          }

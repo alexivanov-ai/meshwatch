@@ -43,11 +43,16 @@ function rsaEncryptHex(data, nHex, eHex, padding, oaepHash) {
   return crypto.publicEncrypt(opts, Buffer.from(data)).toString("hex");
 }
 
+// Not called yet — kept for the ECB-mode variants of the protocol that
+// still need manual PKCS7 padding once those actions are implemented;
+// aesCbcEncryptB64/aesCbcDecryptB64 below use Node's own auto-padding.
+// eslint-disable-next-line no-unused-vars
 function pkcs7Pad(buf) {
   const n = 16 - (buf.length % 16);
   return Buffer.concat([buf, Buffer.alloc(n, n)]);
 }
 
+// eslint-disable-next-line no-unused-vars
 function pkcs7Unpad(buf) {
   if (!buf.length) return buf;
   const n = buf[buf.length - 1];

@@ -107,6 +107,7 @@ For architecture and implementation details, see:
   subsystems, and the reasoning behind the app's hard constraints.
 - [`docs/LLD.md`](docs/LLD.md) — low-level design: database schema and the
   full IPC surface between the renderer and the main process.
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed in each release.
 
 ## License
 

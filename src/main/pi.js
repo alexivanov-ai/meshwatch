@@ -115,7 +115,10 @@ function sshConnectOptions(t) {
   return opts;
 }
 
-function exec(command) {
+// onChunk, when given, is called with each raw stdout/stderr chunk as it
+// arrives (e.g. to stream "apt upgrade" progress to the renderer) — the
+// promise still resolves with the full buffered output either way.
+function exec(command, onChunk) {
   const t = resolveTarget();
   if (!t.host) {
     return Promise.resolve({ output: ["No Pi remembered — run a scan first"], code: 1 });
@@ -151,8 +154,8 @@ function exec(command) {
     conn.on("ready", () => {
       conn.exec(command, (err, stream) => {
         if (err) return done({ output: [String(err.message || err)], code: 1, target: t });
-        stream.on("data", (d) => lines.push(String(d)));
-        stream.stderr.on("data", (d) => lines.push(String(d)));
+        stream.on("data", (d) => { const s = String(d); lines.push(s); if (onChunk) onChunk(s); });
+        stream.stderr.on("data", (d) => { const s = String(d); lines.push(s); if (onChunk) onChunk(s); });
         stream.on("close", (code) => {
           const output = lines.join("").replace(/\r/g, "").split("\n");
           done({ output, code: code == null ? 0 : code, target: t });

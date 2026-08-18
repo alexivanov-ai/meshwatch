@@ -18,10 +18,13 @@
     "build:mac": "node scripts/ensure-electron.js && electron-builder --mac dmg"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "electron": "^43.4.0",
-    "electron-builder": "^25.0.5"
+    "electron-builder": "^25.0.5",
+    "eslint": "^10.8.1",
+    "globals": "^17.11.0"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

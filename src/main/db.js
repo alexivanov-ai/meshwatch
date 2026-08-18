@@ -397,7 +397,7 @@ const DEFAULT_PREFS = {
 };
 
 function getPrefs() {
-  let parsed = {};
+  let parsed;
   try { parsed = JSON.parse(getSetting("prefs_json") || "{}"); } catch (e) { parsed = {}; }
   return Object.assign({}, DEFAULT_PREFS, parsed);
 }

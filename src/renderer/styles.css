@@ -1,5 +1,9 @@
 /* Meshwatch UI style tokens */
 :root {
+  /* Native form controls (select, checkbox, search) follow this, not the
+     CSS variables below. Without it, a dark Windows theme paints light
+     glyphs onto our light inputs, and the reverse when the app is dark. */
+  color-scheme: light;
   --bg: #f3f2f2;
   --ink: #201e1d;
   --accent: #ec3013;
@@ -38,6 +42,7 @@
 }
 
 html[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #161514;
   --ink: #f3f2f2;
   --accent: #ec3013;
@@ -82,8 +87,13 @@ body {
   overflow: hidden;
 }
 
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: var(--ink); }
 button { cursor: pointer; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  background: var(--bg);
+}
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+::placeholder { color: var(--ink); opacity: 0.45; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 header {

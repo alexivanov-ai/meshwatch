@@ -295,7 +295,7 @@ function go(view) {
   if (view === "audit" && !state.audit) runAudit();
   if (view === "pi") loadPi();
   if (view === "preferences") loadPreferences();
-  if (view === "discovery") updateScanChrome();
+  updateScanChrome();
   hideCtx();
   // Device panel stays open while switching rows in Inventory or Topology;
   // close it when leaving for any other left-nav view.
@@ -1148,6 +1148,13 @@ function updateScanChrome() {
     $("#badge-discovery").textContent = "";
   }
   $("#scan-bar-fill").style.width = Math.min(100, state.scanProgress) + "%";
+  // Discovery already has Rescan — don't also offer "Scan network now" once
+  // a sweep has run (this session or devices still on file).
+  const scanBtn = $("#scan");
+  if (scanBtn) {
+    const alreadyScanned = state.devices.length > 0 || !!state.lastScanAt;
+    scanBtn.hidden = state.view === "discovery" && (alreadyScanned || state.scanning);
+  }
 }
 
 // Inline SVG line sparkline, no charting library. `points` is an array of

@@ -12,6 +12,8 @@ categorized).
 
 ## [Unreleased]
 
+- Windows installer now shows the file list and install steps on the
+  Installing page instead of a blank progress screen.
 - Fixed light text showing up in light theme (and dark text in dark
   theme) on dropdowns, search boxes and checkboxes — they were following
   Windows' theme instead of Meshwatch's.
